@@ -1,0 +1,216 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@layer base {
+  :root {
+    /* ORIGO Design System */
+    --background: 0 0% 98%;
+    --foreground: 220 20% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    /* Primary: ORIGO Yellow - use sparingly (~8%) */
+    --primary: 38 100% 67%;
+    --primary-foreground: 220 20% 10%;
+
+    /* Secondary: Neutral grey */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 20% 20%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 220 14% 96%;
+    --accent-foreground: 220 20% 10%;
+
+    /* Status Colors */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 220 20% 10%;
+
+    /* Data Visualization - Blue Scale */
+    --data-100: 210 100% 96%;
+    --data-200: 210 100% 88%;
+    --data-300: 210 100% 76%;
+    --data-400: 210 100% 64%;
+    --data-500: 210 100% 50%;
+    --data-600: 210 100% 42%;
+    --data-700: 210 100% 34%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 38 100% 67%;
+
+    --radius: 0.5rem;
+
+    /* Sidebar */
+    --sidebar-background: 220 20% 10%;
+    --sidebar-foreground: 220 14% 80%;
+    --sidebar-primary: 38 100% 67%;
+    --sidebar-primary-foreground: 220 20% 10%;
+    --sidebar-accent: 220 20% 16%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 220 20% 18%;
+    --sidebar-ring: 38 100% 67%;
+  }
+
+  .dark {
+    --background: 220 20% 10%;
+    --foreground: 220 14% 96%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 220 14% 96%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 220 14% 96%;
+
+    --primary: 38 100% 67%;
+    --primary-foreground: 220 20% 10%;
+
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 220 14% 96%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 220 14% 60%;
+
+    --accent: 220 20% 18%;
+    --accent-foreground: 220 14% 96%;
+
+    --destructive: 0 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 18%;
+    --input: 220 20% 18%;
+    --ring: 38 100% 67%;
+
+    --sidebar-background: 220 20% 8%;
+    --sidebar-foreground: 220 14% 80%;
+    --sidebar-primary: 38 100% 67%;
+    --sidebar-primary-foreground: 220 20% 10%;
+    --sidebar-accent: 220 20% 14%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 220 20% 16%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+  }
+}
+
+@layer components {
+  /* Status Badges */
+  .status-success {
+    @apply bg-green-50 text-green-700 border-green-200;
+  }
+
+  .status-warning {
+    @apply bg-amber-50 text-amber-700 border-amber-200;
+  }
+
+  .status-error {
+    @apply bg-red-50 text-red-700 border-red-200;
+  }
+
+  .status-neutral {
+    @apply bg-slate-50 text-slate-600 border-slate-200;
+  }
+
+  /* Data Cards */
+  .kpi-card {
+    @apply bg-card rounded-lg border p-5 shadow-sm hover:shadow-md transition-shadow;
+  }
+
+  /* Map Tooltip */
+  .map-tooltip {
+    @apply bg-card border rounded-lg shadow-lg p-3 text-sm;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  @keyframes origo-marker-pulse {
+    0% {
+      transform: scale(1);
+      opacity: 0.5;
+    }
+    70% {
+      opacity: 0.18;
+    }
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+
+  .origo-marker {
+    cursor: pointer;
+  }
+
+  .origo-marker-hit {
+    fill: transparent;
+    pointer-events: all;
+  }
+
+  .origo-marker-ring {
+    fill: none;
+    stroke: rgba(148, 163, 184, 0.45);
+    stroke-width: 1.6;
+    animation: origo-marker-pulse 1.6s ease-in-out infinite;
+    transform-box: fill-box;
+    transform-origin: center;
+    pointer-events: none;
+    mix-blend-mode: multiply;
+  }
+
+  .origo-marker-core {
+    fill: rgba(255, 189, 89, 0.9);
+    transform-box: fill-box;
+    transform-origin: center;
+    transition: transform 160ms ease;
+    pointer-events: none;
+  }
+
+  .origo-marker:hover .origo-marker-core {
+    transform: scale(1.18);
+  }
+
+  .origo-marker:hover .origo-marker-ring {
+    stroke: rgba(100, 116, 139, 0.7);
+  }
+
+  .origo-marker.is-active .origo-marker-core {
+    transform: scale(1.3);
+  }
+
+  .origo-marker.is-active .origo-marker-ring {
+    animation: none;
+    opacity: 0.55;
+    transform: scale(1.1);
+  }
+}
