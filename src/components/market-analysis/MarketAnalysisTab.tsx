@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, BarChart3, Info } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BarChart3 } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 import { cn } from "@/lib/utils";
 import {
@@ -14,10 +14,22 @@ interface MarketAnalysisTabProps {
   dateRangeLabel: string;
 }
 
-const phaseRailTone: Record<PhaseKey, string> = {
-  growth: "border-l-[#ff6b6b] bg-[#fbf4f7]",
-  maturity: "border-l-[#ffb020] bg-[#f9f4ec]",
-  adjustment: "border-l-[#4cd137] bg-[#f4f8ef]",
+const phaseDotTone: Record<PhaseKey, string> = {
+  growth: "bg-[#ef4444]",
+  maturity: "bg-[#f59e0b]",
+  adjustment: "bg-[#059669]",
+};
+
+const phaseTextTone: Record<PhaseKey, string> = {
+  growth: "text-[#ef4444]",
+  maturity: "text-[#b45309]",
+  adjustment: "text-[#047857]",
+};
+
+const phaseCardTone: Record<PhaseKey, string> = {
+  growth: "border-red-100 bg-card/90",
+  maturity: "border-amber-100 bg-card/90",
+  adjustment: "border-emerald-100 bg-card/90",
 };
 
 const formatLargeNumber = (value: number) =>
@@ -45,74 +57,52 @@ const SparkTooltip = ({ active, payload }: SparkTooltipProps) => {
   );
 };
 
-const getPhaseNote = (snapshot: MarketAnalysisSnapshot, phaseKey: PhaseKey) => {
-  if (phaseKey === "growth") return snapshot.dataset.notes.growthDefinition;
-  if (phaseKey === "maturity") return snapshot.dataset.notes.maturityDefinition;
-  return snapshot.dataset.notes.adjustmentDefinition;
-};
-
 const getPhaseTitle = (phaseKey: PhaseKey) => {
-  if (phaseKey === "growth") return "GrowthPhase";
-  if (phaseKey === "maturity") return "MaturityPhase";
-  return "AdjustmentPhase";
+  if (phaseKey === "growth") return "Growth Phase";
+  if (phaseKey === "maturity") return "Maturity Phase";
+  return "Adjustment Phase";
 };
 
-const renderPhaseNote = (_note: string, phaseKey: PhaseKey) => {
+const getPhaseSummary = (phaseKey: PhaseKey) => {
   if (phaseKey === "growth") {
-    return (
-      <p className="text-sm leading-relaxed text-[#4b5563] md:text-base">
-        The target product&apos;s trade value/volume quarterly{" "}
-        <span className="font-medium text-[#ff6b6b]">CAGR is high</span> over the past three years
-      </p>
-    );
+    return "Quarterly CAGR has been high in the last 3 years.";
   }
   if (phaseKey === "maturity") {
-    return (
-      <p className="text-sm leading-relaxed text-[#4b5563] md:text-base">
-        The target product&apos;s trade value/volume quarterly{" "}
-        <span className="font-medium text-[#f59e0b]">CAGR has been stable</span> over the past three years
-      </p>
-    );
+    return "Quarterly CAGR has remained stable in the last 3 years.";
   }
-  return (
-    <p className="text-sm leading-relaxed text-[#4b5563] md:text-base">
-      The target product&apos;s trade value/volume quarterly{" "}
-      <span className="font-medium text-[#059669]">CAGR is low</span> over the past three years
-    </p>
-  );
+  return "Quarterly CAGR has been low in the last 3 years.";
 };
 
 const CountryTrendCard = ({ country, phaseKey }: { country: PhaseCountry; phaseKey: PhaseKey }) => {
   const cagr = country.cagrPercent;
   const positive = (cagr ?? 0) >= 0;
   const gradientId = `${phaseKey}-${country.countryName.replace(/\s+/g, "-").toLowerCase()}`;
-  const textTone =
-    phaseKey === "growth" ? "text-[#ef4444]" : phaseKey === "adjustment" ? "text-[#059669]" : "text-[#4b5563]";
+  const textTone = phaseTextTone[phaseKey];
 
   return (
-    <article className="min-w-0 rounded-xl border border-border/50 bg-white/70 p-3">
-      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
-        <h4 className="min-w-0 break-words text-base font-medium leading-tight text-[#2f3640] md:text-lg">
+    <article className="min-w-0 rounded-2xl border border-border/60 bg-background/90 p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-1.5">
+        <h4 className="min-w-0 break-words text-sm font-medium leading-tight text-foreground">
           {country.countryName}
         </h4>
         <div
           className={cn(
-            "shrink-0 whitespace-nowrap text-base font-semibold leading-none md:text-lg",
+            "shrink-0 whitespace-nowrap text-sm font-semibold leading-none",
             textTone,
           )}
         >
           {cagr === null ? (
-            <span className="text-sm text-muted-foreground">N/A</span>
+            <span className="text-xs text-muted-foreground">N/A</span>
           ) : (
             <>
               <span>{Math.abs(cagr).toFixed(1)}%</span>
-              {positive ? <ArrowUpRight className="h-5 w-5" /> : <ArrowDownRight className="h-5 w-5" />}
+              {positive ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}
             </>
           )}
         </div>
       </div>
 
-      <div className="h-20 w-full">
+      <div className="h-14 w-full md:h-[60px]">
         {country.trendSeries.length ? (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={country.trendSeries} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
@@ -135,12 +125,40 @@ const CountryTrendCard = ({ country, phaseKey }: { country: PhaseCountry; phaseK
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex h-full items-center justify-center rounded-xl bg-muted/50 text-xs text-muted-foreground">
+          <div className="flex h-full items-center justify-center rounded-lg bg-muted/50 text-[11px] text-muted-foreground">
             No trend data
           </div>
         )}
       </div>
     </article>
+  );
+};
+
+const phaseKeys: PhaseKey[] = ["growth", "maturity", "adjustment"];
+
+const getPhaseGridClassName = (phaseKey: PhaseKey) => {
+  if (phaseKey === "maturity") return "grid gap-3 sm:grid-cols-2 xl:grid-cols-2";
+  return "grid gap-3 sm:grid-cols-2 xl:grid-cols-3";
+};
+
+const renderPhaseCountries = (countries: PhaseCountry[] | undefined, phaseKey: PhaseKey) => {
+  if (countries?.length) {
+    return (
+      <div className={getPhaseGridClassName(phaseKey)}>
+        {countries.map((country) => (
+          <CountryTrendCard key={`${phaseKey}-${country.countryName}`} country={country} phaseKey={phaseKey} />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-20 items-center justify-center rounded-2xl border border-dashed border-border/60 bg-background/70">
+      <div className="flex flex-col items-center text-slate-400">
+        <BarChart3 className="mb-1 h-6 w-6 opacity-40" />
+        <p className="text-sm">No data</p>
+      </div>
+    </div>
   );
 };
 
@@ -178,135 +196,127 @@ export const MarketAnalysisTab = ({ selectedProduct, dateRangeLabel }: MarketAna
     return map;
   }, [snapshot]);
 
-  const growthPhase = phaseMap.get("growth");
-  const maturityPhase = phaseMap.get("maturity");
-  const adjustmentPhase = phaseMap.get("adjustment");
-
   return (
-    <section className="mx-auto w-full max-w-7xl space-y-5">
-      <header className="rounded-3xl border border-border/70 bg-card p-5 md:p-6">
-        <h2 className="text-3xl font-semibold tracking-tight text-foreground">Market Analysis</h2>
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          See how this market has evolved over time and where it stands today.
+    <section className="mx-auto w-full max-w-7xl space-y-4">
+      <header className="rounded-2xl border border-border/60 bg-card/90 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur md:p-5">
+        <h2 className="text-xl font-semibold tracking-tight text-foreground md:text-2xl">Market Analysis</h2>
+        <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
+          A minimal lifecycle view of where demand is growing, stable, and adjusting.
         </p>
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-secondary px-3 py-1.5 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{selectedProduct}</span>
-          <span>|</span>
-          <span>{dateRangeLabel || "Time range not available"}</span>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border/70 bg-background/90 px-3 py-1 text-xs font-medium text-foreground">
+            {selectedProduct}
+          </span>
+          <span className="rounded-full border border-border/70 bg-background/90 px-3 py-1 text-xs text-muted-foreground">
+            {dateRangeLabel || "Time range not available"}
+          </span>
         </div>
       </header>
 
       {loading ? (
-        <div className="rounded-3xl border border-border/70 bg-card p-6 text-sm text-muted-foreground">
+        <div className="rounded-2xl border border-border/60 bg-card/90 p-5 text-sm text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
           Preparing market lifecycle charts...
         </div>
       ) : error ? (
-        <div className="rounded-3xl border border-destructive/30 bg-card p-6 text-sm text-destructive">
+        <div className="rounded-2xl border border-destructive/30 bg-card/90 p-5 text-sm text-destructive shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
           {error}
+        </div>
+      ) : !snapshot ? (
+        <div className="rounded-2xl border border-border/60 bg-card/90 p-5 text-sm text-muted-foreground shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
+          Market data is not available yet.
         </div>
       ) : (
         <>
-          <section className="overflow-hidden rounded-3xl border border-border/70 bg-[#f5f6f7] p-0">
-            <div className="grid gap-0 lg:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr]">
-              <aside className="border-r border-border/60">
-                {(["growth", "maturity", "adjustment"] as PhaseKey[]).map((phaseKey) => {
-                  const phase = phaseMap.get(phaseKey);
-                  const note = getPhaseNote(snapshot, phaseKey);
-                  return (
-                    <div
-                      key={phaseKey}
-                      className={cn(
-                        "border-l-[4px] border-b border-b-border/50 px-4 py-5",
-                        phaseRailTone[phaseKey],
-                      )}
-                    >
-                      <div className="flex items-center gap-1">
-                        <h3 className="text-xl font-semibold tracking-tight text-[#1f2937] md:text-2xl lg:text-[30px]">
-                          {getPhaseTitle(phaseKey)}
-                        </h3>
-                        <span className="text-xl font-semibold text-[#3b82f6] md:text-2xl lg:text-[30px]">
-                          {phase?.countriesCount ?? 0}
-                        </span>
-                        <Info className="h-4 w-4 text-slate-400" />
-                      </div>
-                      <div className="mt-3">{renderPhaseNote(note, phaseKey)}</div>
+          <section className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
+            {phaseKeys.map((phaseKey) => {
+              const phase = phaseMap.get(phaseKey);
+              return (
+                <article
+                  key={`summary-${phaseKey}`}
+                  className={cn("rounded-2xl border p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]", phaseCardTone[phaseKey])}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("h-2.5 w-2.5 rounded-full", phaseDotTone[phaseKey])} />
+                      <h3 className="text-sm font-semibold text-foreground">{getPhaseTitle(phaseKey)}</h3>
                     </div>
-                  );
-                })}
-                <div className="border-l-[4px] border-l-[#d1d5db] bg-[#eceef1] px-4 py-4">
-                  <div className="flex items-center gap-1">
-                    <h3 className="text-xl font-semibold tracking-tight text-[#374151] md:text-2xl lg:text-[30px]">
-                      Other countries
-                    </h3>
-                    <span className="text-xl font-semibold text-[#3b82f6] md:text-2xl lg:text-[30px]">
-                      {snapshot?.otherCountries.count ?? 0}
+                    <span className="text-lg font-semibold tracking-tight text-foreground">
+                      {phase?.countriesCount ?? 0}
                     </span>
-                    <Info className="h-4 w-4 text-slate-400" />
                   </div>
-                </div>
-              </aside>
-
-              <div className="p-5 md:p-6">
-                <div className="grid gap-6">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {(growthPhase?.countries ?? []).map((country) => (
-                      <CountryTrendCard key={`growth-${country.countryName}`} country={country} phaseKey="growth" />
-                    ))}
-                  </div>
-
-                  <div className="flex min-h-36 items-center justify-center">
-                    {maturityPhase?.countries.length ? (
-                      <div className="grid w-full gap-6 md:grid-cols-2">
-                        {maturityPhase.countries.map((country) => (
-                          <CountryTrendCard
-                            key={`maturity-${country.countryName}`}
-                            country={country}
-                            phaseKey="maturity"
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center text-slate-400">
-                        <BarChart3 className="mb-2 h-10 w-10 opacity-40" />
-                        <p className="text-xl md:text-[28px]">No Data</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                    {(adjustmentPhase?.countries ?? []).map((country) => (
-                      <CountryTrendCard
-                        key={`adjustment-${country.countryName}`}
-                        country={country}
-                        phaseKey="adjustment"
-                      />
-                    ))}
-                  </div>
-
-                  <div className="rounded-xl border border-border/60 bg-white/65 p-3">
-                    <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Other countries ({snapshot?.otherCountries.count ?? 0})
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {(snapshot?.otherCountries.countryNames ?? []).map((name) => (
-                        <span
-                          key={name}
-                          className="rounded-full border border-border bg-white px-2.5 py-1 text-xs text-[#374151]"
-                        >
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                  <p className={cn("mt-1.5 text-xs leading-relaxed", phaseTextTone[phaseKey])}>
+                    {getPhaseSummary(phaseKey)}
+                  </p>
+                </article>
+              );
+            })}
+            <article className="rounded-2xl border border-border/60 bg-card/90 p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground">Other countries</h3>
+                <span className="text-lg font-semibold tracking-tight text-foreground">
+                  {snapshot.otherCountries.count}
+                </span>
               </div>
+              <p className="mt-1.5 text-xs text-muted-foreground">Countries outside the 3 main lifecycle groups.</p>
+            </article>
+          </section>
+
+          <section className="space-y-3">
+            {phaseKeys.map((phaseKey) => {
+              const phase = phaseMap.get(phaseKey);
+              return (
+                <article
+                  key={`phase-${phaseKey}`}
+                  className="rounded-2xl border border-border/60 bg-card/90 p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] md:p-4"
+                >
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border/50 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("h-2.5 w-2.5 rounded-full", phaseDotTone[phaseKey])} />
+                      <h3 className="text-base font-semibold text-foreground">{getPhaseTitle(phaseKey)}</h3>
+                      <span className="rounded-full border border-border/60 bg-background/90 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        {phase?.countriesCount ?? 0} countries
+                      </span>
+                    </div>
+                    <p className={cn("text-xs font-medium", phaseTextTone[phaseKey])}>{getPhaseSummary(phaseKey)}</p>
+                  </div>
+                  {renderPhaseCountries(phase?.countries, phaseKey)}
+                </article>
+              );
+            })}
+          </section>
+
+          <section className="rounded-2xl border border-border/60 bg-card/90 p-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] md:p-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Other countries</h3>
+              <span className="text-xs text-muted-foreground">{snapshot.otherCountries.count} total</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(snapshot.otherCountries.countryNames ?? []).map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full border border-border/70 bg-background/90 px-2.5 py-1 text-xs text-muted-foreground"
+                >
+                  {name}
+                </span>
+              ))}
             </div>
           </section>
 
-          <section className="rounded-3xl border border-border/70 bg-card p-5 md:p-6">
-            <h3 className="text-base font-semibold text-foreground">What this means for decisions</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              {snapshot?.interpretation || "Not available"}
+          <section className="rounded-2xl border border-border/60 bg-card/90 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold text-foreground">Decision Signal</h3>
+              <span className="rounded-full border border-border/60 bg-background/90 px-2.5 py-0.5 text-[11px] text-muted-foreground">
+                Current phase: {getPhaseTitle(snapshot.currentPhase)}
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/90 px-2.5 py-0.5 text-[11px] text-muted-foreground">
+                Demand: {snapshot.demandDirection}
+              </span>
+              <span className="rounded-full border border-border/60 bg-background/90 px-2.5 py-0.5 text-[11px] text-muted-foreground">
+                Stability: {snapshot.stability}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {snapshot.interpretation || "Not available"}
             </p>
           </section>
         </>

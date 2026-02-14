@@ -5,10 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Company, Country, HsCode } from "@/data/market-intelligence/types";
-import type { TradeHistoryRow } from "@/data/market-intelligence/selectors";
-import { formatMonthLabel } from "@/data/market-intelligence/selectors";
+import type { Company, Country, HsCode, TradeHistoryRow } from "@/data/market-intelligence/types";
 import { getFlagEmoji } from "@/lib/flags";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface CompanyProfileDrawerProps {
   open: boolean;
@@ -23,6 +22,12 @@ interface CompanyProfileDrawerProps {
 }
 
 const formatNumber = (value: number) => new Intl.NumberFormat("en-US").format(value);
+const formatMonthLabel = (month: string) => {
+  const [year, monthIndex] = month.split("-").map(Number);
+  const date = new Date(year, monthIndex - 1, 1);
+  if (Number.isNaN(date.getTime())) return month;
+  return date.toLocaleString("en-US", { month: "short", year: "numeric" });
+};
 
 const CopyButton = ({ value }: { value?: string }) => {
   const [copied, setCopied] = useState(false);
@@ -56,30 +61,32 @@ const CopyButton = ({ value }: { value?: string }) => {
 const InfoRow = ({ label, value, href }: { label: string; value?: string; href?: string }) => {
   if (!value) {
     return (
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="text-sm">—</span>
+        <span className="text-sm sm:text-right">—</span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <span className="text-sm text-muted-foreground">{label}</span>
-      <div className="flex max-w-[72%] items-center gap-2">
+      <div className="flex w-full min-w-0 items-start gap-1.5 sm:max-w-[72%] sm:justify-end">
         {href ? (
           <a
             href={href}
-            className="truncate text-sm text-primary hover:underline"
+            className="min-w-0 break-all text-sm text-primary hover:underline"
             target="_blank"
             rel="noreferrer"
           >
             {value}
           </a>
         ) : (
-          <span className="truncate text-sm">{value}</span>
+          <span className="min-w-0 break-words text-sm">{value}</span>
         )}
-        <CopyButton value={value} />
+        <div className="shrink-0">
+          <CopyButton value={value} />
+        </div>
       </div>
     </div>
   );
@@ -137,6 +144,8 @@ export function CompanyProfileDrawer({
   tradeHistoryUsedFallback = false,
   isLoading,
 }: CompanyProfileDrawerProps) {
+  const isMobile = useIsMobile();
+
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -304,27 +313,63 @@ export function CompanyProfileDrawer({
                   </Button>
                 </div>
 
-                <div className="rounded-lg border bg-card">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead>Date (Month)</TableHead>
-                        <TableHead>Origin Country</TableHead>
-                        <TableHead>Exporter / Counterparty</TableHead>
-                        <TableHead className="text-right">Weight (KG)</TableHead>
-                        <TableHead className="text-right">Value (USD)</TableHead>
-                        <TableHead className="text-right">Shipment Count</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {historyRows.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                            No data for this selection.
-                          </TableCell>
+                {historyRows.length === 0 ? (
+                  <div className="rounded-lg border bg-card p-6 text-center text-sm text-muted-foreground">
+                    No data for this selection.
+                  </div>
+                ) : isMobile ? (
+                  <div className="space-y-2">
+                    {historyRows.map((row) => (
+                      <article key={`${row.month}-${row.originCountry ?? "na"}`} className="rounded-lg border bg-card p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Date (Month)</p>
+                            <p className="font-medium">{formatMonthLabel(row.month)}</p>
+                          </div>
+                          <Badge variant="secondary" className="shrink-0">
+                            {formatNumber(row.weightKg)} KG
+                          </Badge>
+                        </div>
+                        <div className="mt-2 space-y-1.5 text-sm">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Origin Country</p>
+                            <p className="break-words">{row.originCountry ?? "—"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Exporter / Counterparty</p>
+                            <p className="break-words">{row.counterparty ?? "—"}</p>
+                          </div>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 rounded-md bg-secondary/50 p-2 text-sm">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Value (USD)</p>
+                            <p className="font-medium">{row.valueUsd ? formatNumber(row.valueUsd) : "—"}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Shipment Count</p>
+                            <p className="font-medium">
+                              {row.shipmentsCount ? formatNumber(row.shipmentsCount) : "—"}
+                            </p>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border bg-card">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead>Date (Month)</TableHead>
+                          <TableHead>Origin Country</TableHead>
+                          <TableHead>Exporter / Counterparty</TableHead>
+                          <TableHead className="text-right">Weight (KG)</TableHead>
+                          <TableHead className="text-right">Value (USD)</TableHead>
+                          <TableHead className="text-right">Shipment Count</TableHead>
                         </TableRow>
-                      ) : (
-                        historyRows.map((row) => (
+                      </TableHeader>
+                      <TableBody>
+                        {historyRows.map((row) => (
                           <TableRow key={`${row.month}-${row.originCountry ?? "na"}`}>
                             <TableCell className="font-medium">{formatMonthLabel(row.month)}</TableCell>
                             <TableCell>{row.originCountry ?? "—"}</TableCell>
@@ -337,11 +382,11 @@ export function CompanyProfileDrawer({
                               {row.shipmentsCount ? formatNumber(row.shipmentsCount) : "—"}
                             </TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </section>
             </div>
           )}

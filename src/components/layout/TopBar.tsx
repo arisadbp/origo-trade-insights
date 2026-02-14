@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { Bell, Search, ChevronDown, HelpCircle, Menu } from "lucide-react";
-import { NavLink, useLocation } from "react-router-dom";
+import { Bell, ChevronDown, HelpCircle, Menu } from "lucide-react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,11 +15,11 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetClose, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { adminNavItems, mainNavItems, type NavItem } from "./navItems";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface TopBarProps {
   title?: string;
   subtitle?: string;
-  showSearch?: boolean;
 }
 
 function MobileMenuSection({
@@ -43,6 +42,7 @@ function MobileMenuSection({
         {items.map((item) => {
           const activeParent =
             pathname === item.href ||
+            pathname.startsWith(`${item.href}/`) ||
             item.children?.some((child) => child.href === pathname);
 
           return (
@@ -96,12 +96,17 @@ function MobileMenuSection({
   );
 }
 
-export function TopBar({ title, subtitle, showSearch = true }: TopBarProps) {
+export function TopBar({ title, subtitle }: TopBarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { accountType, displayName, email, logout } = useAuth();
+  const isBackOffice = accountType === "backoffice";
+  const mobileMainItems = isBackOffice ? [] : mainNavItems;
+  const mobileAdminItems = isBackOffice ? adminNavItems : [];
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-card px-3 md:h-16 md:px-6">
+    <header className="origo-topbar sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-card/88 px-2 backdrop-blur-sm sm:px-3 md:h-16 md:px-6">
       <div className="flex min-w-0 items-center gap-2 md:gap-4">
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild>
@@ -127,18 +132,22 @@ export function TopBar({ title, subtitle, showSearch = true }: TopBarProps) {
               </div>
 
               <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-                <MobileMenuSection
-                  sectionTitle="Main"
-                  items={mainNavItems}
-                  pathname={location.pathname}
-                  closeMenu={() => setMobileMenuOpen(false)}
-                />
-                <MobileMenuSection
-                  sectionTitle="Admin"
-                  items={adminNavItems}
-                  pathname={location.pathname}
-                  closeMenu={() => setMobileMenuOpen(false)}
-                />
+                {mobileMainItems.length > 0 && (
+                  <MobileMenuSection
+                    sectionTitle="Main"
+                    items={mobileMainItems}
+                    pathname={location.pathname}
+                    closeMenu={() => setMobileMenuOpen(false)}
+                  />
+                )}
+                {mobileAdminItems.length > 0 && (
+                  <MobileMenuSection
+                    sectionTitle="Back Office"
+                    items={mobileAdminItems}
+                    pathname={location.pathname}
+                    closeMenu={() => setMobileMenuOpen(false)}
+                  />
+                )}
               </nav>
             </div>
           </SheetContent>
@@ -156,19 +165,7 @@ export function TopBar({ title, subtitle, showSearch = true }: TopBarProps) {
         )}
       </div>
 
-      {showSearch && (
-        <div className="hidden flex-1 max-w-md mx-8 md:flex">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search markets, companies, orders..."
-              className="pl-10 bg-secondary/50 border-0 focus-visible:ring-1"
-            />
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <Button variant="ghost" size="icon" className="hidden text-muted-foreground sm:inline-flex">
           <HelpCircle className="h-5 w-5" />
         </Button>
@@ -217,15 +214,17 @@ export function TopBar({ title, subtitle, showSearch = true }: TopBarProps) {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="ml-1 gap-2 px-2 sm:px-3">
+            <Button variant="ghost" className="ml-1 gap-2 px-1.5 sm:px-3">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary text-primary-foreground text-sm font-medium">
-                  JD
+                  {displayName.slice(0, 2).toUpperCase() || "US"}
                 </AvatarFallback>
               </Avatar>
               <div className="hidden lg:flex flex-col items-start">
-                <span className="text-sm font-medium">John Doe</span>
-                <span className="text-xs text-muted-foreground">Export Director</span>
+                <span className="text-sm font-medium">{displayName || "User"}</span>
+                <span className="text-xs text-muted-foreground">
+                  {isBackOffice ? "Back Office" : "Customer Account"}
+                </span>
               </div>
               <ChevronDown className="hidden h-4 w-4 text-muted-foreground sm:block" />
             </Button>
@@ -233,11 +232,17 @@ export function TopBar({ title, subtitle, showSearch = true }: TopBarProps) {
           <DropdownMenuContent align="end" className="w-56 bg-popover">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile Settings</DropdownMenuItem>
-            <DropdownMenuItem>Company Settings</DropdownMenuItem>
-            <DropdownMenuItem>Subscription</DropdownMenuItem>
+            <DropdownMenuItem>{email || "No email"}</DropdownMenuItem>
+            <DropdownMenuItem>{isBackOffice ? "Back Office session" : "Customer session"}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">
+            <DropdownMenuItem
+              className="text-destructive"
+              onClick={() => {
+                const currentType = accountType;
+                logout();
+                navigate(currentType === "backoffice" ? "/backoffice/login" : "/login", { replace: true });
+              }}
+            >
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>

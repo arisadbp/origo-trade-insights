@@ -1,19 +1,42 @@
 import { NavLink } from "react-router-dom";
-import { Globe, Building2, Package, FileText, Upload } from "lucide-react";
+import {
+  Globe,
+  Building2,
+  Package,
+  FileText,
+  Upload,
+  LayoutDashboard,
+  Users,
+  Database,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
-const navItems = [
+const customerNavItems = [
   { label: "Focus", href: "/market-intelligence", icon: Globe },
-  { label: "Company", href: "/my-company", icon: Building2 },
+  { label: "TRR", href: "/my-company", icon: Building2 },
   { label: "Orders", href: "/my-company/orders", icon: Package },
   { label: "Invoices", href: "/my-company/invoices", icon: FileText },
   { label: "Upload", href: "/upload", icon: Upload },
 ];
 
+const backOfficeNavItems = [
+  { label: "Dash", href: "/admin", icon: LayoutDashboard },
+  { label: "Clients", href: "/admin/customers", icon: Building2 },
+  { label: "Users", href: "/admin/users", icon: Users },
+  { label: "Data", href: "/admin/data", icon: Database },
+];
+
 export function MobileTabBar() {
+  const { accountType } = useAuth();
+  const navItems = accountType === "backoffice" ? backOfficeNavItems : customerNavItems;
+
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur md:hidden">
-      <div className="grid h-16 grid-cols-5">
+      <div
+        className="grid h-16"
+        style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+      >
         {navItems.map((item) => (
           <NavLink
             key={item.href}

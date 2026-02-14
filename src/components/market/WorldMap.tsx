@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LocateFixed, Minus, Plus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getFlagEmoji } from "@/lib/flags";
 import {
@@ -8,6 +8,7 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MapCountryDatum {
   code: string;
@@ -16,6 +17,9 @@ export interface MapCountryDatum {
   metricValue: number;
   share: number;
   importersCount?: number;
+  customerStatus?: "new" | "existing" | "mixed";
+  newCustomers?: number;
+  existingCustomers?: number;
 }
 
 interface WorldMapProps {
@@ -36,6 +40,9 @@ type HoverCountry = {
   name: string;
   flag: string;
   customers: number;
+  customerStatus: "new" | "existing" | "mixed";
+  newCustomers: number;
+  existingCustomers: number;
   metricValue: number;
   share: number;
 };
@@ -68,6 +75,22 @@ function CountryHoverTooltip({
         <div className="flex items-center justify-between rounded-lg border bg-secondary/60 px-3 py-2">
           <span className="text-xs text-muted-foreground">Customers</span>
           <span className="text-sm font-semibold">{country.customers}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex items-center justify-between rounded-lg border bg-amber-50 px-3 py-2">
+            <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+              <span className="h-2 w-2 rounded-full bg-[#ffbd59]" />
+              New
+            </span>
+            <span className="text-xs font-semibold text-amber-700">{country.newCustomers}</span>
+          </div>
+          <div className="flex items-center justify-between rounded-lg border bg-emerald-50 px-3 py-2">
+            <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Existing
+            </span>
+            <span className="text-xs font-semibold text-emerald-700">{country.existingCustomers}</span>
+          </div>
         </div>
         {hasData ? (
           <p className="text-xs text-muted-foreground">Click to see customers in this country</p>
@@ -106,14 +129,18 @@ type GeoJson = {
   features: GeoFeature[];
 };
 
-const VIEWBOX = { width: 1000, height: 460 };
+const VIEWBOX = { width: 1000, height: 410 };
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.3;
 const ZOOM_STEP = 0.2;
+const LAT_MAX = 78;
+const LAT_MIN = -52;
+const MAP_X_PADDING = 0;
 
 const project = (lon: number, lat: number) => {
-  const x = ((lon + 180) / 360) * VIEWBOX.width;
-  const y = ((90 - lat) / 180) * VIEWBOX.height;
+  const clampedLat = Math.max(LAT_MIN, Math.min(LAT_MAX, lat));
+  const x = ((lon + 180) / 360) * (VIEWBOX.width - MAP_X_PADDING * 2) + MAP_X_PADDING;
+  const y = ((LAT_MAX - clampedLat) / (LAT_MAX - LAT_MIN)) * VIEWBOX.height;
   return [x, y] as const;
 };
 
@@ -227,8 +254,10 @@ export function WorldMap({
   const [isDragging, setIsDragging] = useState(false);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isAutoZooming, setIsAutoZooming] = useState(false);
+  const [isFocusEnabled, setIsFocusEnabled] = useState(false);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   const [showFocusHint, setShowFocusHint] = useState(false);
+  const [focusHintMessage, setFocusHintMessage] = useState("Map is focused on countries with available data.");
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
   const [hoverPos, setHoverPos] = useState<{ x: number; y: number } | null>(null);
   const [hoverLock, setHoverLock] = useState(false);
@@ -238,10 +267,25 @@ export function WorldMap({
   const groupRef = useRef<SVGGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hoverTimeout = useRef<number | null>(null);
+  const focusHintTimeout = useRef<number | null>(null);
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const dragFrameRef = useRef<number | null>(null);
   const activePointerId = useRef<number | null>(null);
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
   const dragDistance = useRef(0);
   const dragHappened = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (focusHintTimeout.current) {
+        window.clearTimeout(focusHintTimeout.current);
+      }
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -289,16 +333,28 @@ export function WorldMap({
   );
 
   const maxMetric = Math.max(0, ...data.map((datum) => datum.metricValue));
-  const buildHoverCountry = (rawCode?: string | null): HoverCountry | null => {
+  const buildHoverCountry = useCallback((rawCode?: string | null): HoverCountry | null => {
     if (!rawCode) return null;
     const code = rawCode.toUpperCase();
     const datum = dataMap.get(code);
     if (datum) {
+      const newCustomers = datum.newCustomers ?? 0;
+      const existingCustomers =
+        datum.existingCustomers ?? Math.max(0, (datum.importersCount ?? 0) - newCustomers);
       return {
         code: datum.code,
         name: datum.name,
         flag: datum.flag,
         customers: datum.importersCount ?? 0,
+        customerStatus:
+          datum.customerStatus ??
+          (newCustomers > 0 && existingCustomers > 0
+            ? "mixed"
+            : newCustomers > 0
+              ? "new"
+              : "existing"),
+        newCustomers,
+        existingCustomers,
         metricValue: datum.metricValue,
         share: datum.share,
       };
@@ -309,14 +365,17 @@ export function WorldMap({
       name: fallbackName,
       flag: getFlagEmoji(code),
       customers: 0,
+      customerStatus: "existing",
+      newCustomers: 0,
+      existingCustomers: 0,
       metricValue: 0,
       share: 0,
     };
-  };
+  }, [countryNameMap, dataMap]);
 
   const hoveredCountry = useMemo<HoverCountry | null>(
     () => buildHoverCountry(hoveredCode),
-    [hoveredCode, dataMap, countryNameMap],
+    [hoveredCode, buildHoverCountry],
   );
   const markerData = useMemo(() => {
     const featureByIso = new Map<string, GeoFeature>();
@@ -342,14 +401,23 @@ export function WorldMap({
           x,
           y,
           customers,
+          customerStatus:
+            datum.customerStatus ??
+            ((datum.newCustomers ?? 0) > 0 && (datum.existingCustomers ?? 0) > 0
+              ? "mixed"
+              : (datum.newCustomers ?? 0) > 0
+                ? "new"
+                : "existing"),
           label: customers > 99 ? "99+" : `${customers}`,
         };
       })
+      .filter((item) => item && item.customers > 0)
       .filter(Boolean) as Array<
       MapCountryDatum & {
         x: number;
         y: number;
         customers: number;
+        customerStatus: "new" | "existing" | "mixed";
         label: string;
       }
     >;
@@ -363,14 +431,7 @@ export function WorldMap({
           if (!path) return null;
 
           const code = getIso2(feature.properties);
-          const datum = code ? dataMap.get(code.toUpperCase()) : undefined;
-          const intensity = datum && maxMetric > 0 ? datum.metricValue / maxMetric : 0;
-
-          let fill = "#E5E7EB";
-          if (intensity > 0.7) fill = "#5D8FD8";
-          else if (intensity > 0.4) fill = "#8DB0E8";
-          else if (intensity > 0.15) fill = "#BDD2F3";
-          else if (intensity > 0) fill = "#DAE7F8";
+          const fill = "#E5E7EB";
 
           return {
             key: `${feature.id ?? index}`,
@@ -380,12 +441,24 @@ export function WorldMap({
           };
         })
         .filter(Boolean) as Array<{ key: string; code?: string; path: string; fill: string }>,
-    [features, dataMap, maxMetric],
+    [features],
   );
 
   const centerX = VIEWBOX.width / 2;
   const centerY = VIEWBOX.height / 2;
   const transform = `translate(${pan.x + centerX - centerX * zoom} ${pan.y + centerY - centerY * zoom}) scale(${zoom})`;
+  const applyMapTransform = useCallback((nextPan: { x: number; y: number }, nextZoom: number) => {
+    if (!groupRef.current) return;
+    const tx = nextPan.x + centerX - centerX * nextZoom;
+    const ty = nextPan.y + centerY - centerY * nextZoom;
+    groupRef.current.setAttribute("transform", `translate(${tx} ${ty}) scale(${nextZoom})`);
+  }, [centerX, centerY]);
+
+  useEffect(() => {
+    panRef.current = pan;
+    zoomRef.current = zoom;
+    applyMapTransform(pan, zoom);
+  }, [pan, zoom, applyMapTransform]);
 
   const hoveredMarker = hoveredCode
     ? markerData.find((marker) => marker.code === hoveredCode)
@@ -416,12 +489,14 @@ export function WorldMap({
 
   useEffect(() => {
     if (!autoZoomKey) return;
+    if (!isFocusEnabled) return;
     setUserHasInteracted(false);
     setShowFocusHint(false);
-  }, [autoZoomKey]);
+  }, [autoZoomKey, isFocusEnabled]);
 
   useEffect(() => {
     if (!autoZoomKey) return;
+    if (!isFocusEnabled) return;
     if (userHasInteracted) return;
     if (selectedCountryCode) return;
     if (!features.length) return;
@@ -487,11 +562,16 @@ export function WorldMap({
     setIsAutoZooming(true);
     setZoom(nextZoom);
     setPan(nextPan);
+    setFocusHintMessage("Map is focused on countries with available data.");
     setShowFocusHint(true);
+    if (focusHintTimeout.current) {
+      window.clearTimeout(focusHintTimeout.current);
+    }
+    focusHintTimeout.current = window.setTimeout(() => setShowFocusHint(false), 2200);
 
     const timer = window.setTimeout(() => setIsAutoZooming(false), 420);
     return () => window.clearTimeout(timer);
-  }, [autoZoomKey, userHasInteracted, selectedCountryCode, features, dataCountryCodes, centerX, centerY]);
+  }, [autoZoomKey, isFocusEnabled, userHasInteracted, selectedCountryCode, features, dataCountryCodes, centerX, centerY]);
 
   const handleMarkerEnter = (code: string, event?: React.MouseEvent<SVGGElement>) => {
     if (!enableHoverCard) return;
@@ -555,11 +635,17 @@ export function WorldMap({
 
   const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
     if (activePointerId.current !== null) return;
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    setIsAutoZooming(false);
     activePointerId.current = event.pointerId;
     lastPoint.current = { x: event.clientX, y: event.clientY };
     dragDistance.current = 0;
     setIsDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
   };
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -575,15 +661,32 @@ export function WorldMap({
         setShowFocusHint(false);
       }
     }
-    setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+    panRef.current = {
+      x: panRef.current.x + dx,
+      y: panRef.current.y + dy,
+    };
+    if (dragFrameRef.current === null) {
+      dragFrameRef.current = window.requestAnimationFrame(() => {
+        applyMapTransform(panRef.current, zoomRef.current);
+        dragFrameRef.current = null;
+      });
+    }
+    event.preventDefault();
   };
 
   const handlePointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
     if (activePointerId.current !== event.pointerId) return;
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+      applyMapTransform(panRef.current, zoomRef.current);
+    }
     activePointerId.current = null;
     lastPoint.current = null;
     setIsDragging(false);
+    setPan(panRef.current);
     event.currentTarget.releasePointerCapture(event.pointerId);
+    event.preventDefault();
     setTimeout(() => {
       dragHappened.current = false;
     }, 0);
@@ -638,36 +741,184 @@ export function WorldMap({
     }, 140);
   };
 
+  const handleToggleFocus = () => {
+    if (isFocusEnabled) {
+      setIsFocusEnabled(false);
+      setUserHasInteracted(true);
+      setIsAutoZooming(true);
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      setFocusHintMessage("Focus is off. Pan and zoom freely.");
+      setShowFocusHint(true);
+      if (focusHintTimeout.current) {
+        window.clearTimeout(focusHintTimeout.current);
+      }
+      focusHintTimeout.current = window.setTimeout(() => setShowFocusHint(false), 1800);
+      window.setTimeout(() => setIsAutoZooming(false), 300);
+      return;
+    }
+
+    setIsFocusEnabled(true);
+    setUserHasInteracted(false);
+    setFocusHintMessage("Focus is on. Map centers on active data countries.");
+    setShowFocusHint(true);
+    if (focusHintTimeout.current) {
+      window.clearTimeout(focusHintTimeout.current);
+    }
+    focusHintTimeout.current = window.setTimeout(() => setShowFocusHint(false), 1800);
+  };
+
+  const handleResetViewport = () => {
+    setIsAutoZooming(true);
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setShowFocusHint(false);
+    if (isFocusEnabled) {
+      setUserHasInteracted(false);
+    }
+    window.setTimeout(() => setIsAutoZooming(false), 320);
+  };
+
+  const hasViewportChanges = Math.abs(zoom - 1) > 0.001 || Math.abs(pan.x) > 0.5 || Math.abs(pan.y) > 0.5;
+
   return (
     <div
       ref={containerRef}
       className="relative h-full w-full overflow-hidden rounded-xl border border-border/60 bg-slate-50"
     >
-      <div className="absolute right-3 top-3 z-20 flex flex-col gap-2">
+      <div className="absolute left-2 top-2 z-20 flex items-center gap-1.5 md:hidden">
         <Button
           size="icon"
           variant="secondary"
-          className="h-8 w-8 rounded-lg bg-white shadow-sm"
+          className="h-8 w-8 rounded-full border border-[#3c3c431f] bg-white/92 text-slate-700 shadow-sm backdrop-blur-[8px]"
           onClick={() => {
             setZoom((prev) => Math.min(MAX_ZOOM, prev + ZOOM_STEP));
             setUserHasInteracted(true);
             setShowFocusHint(false);
           }}
+          disabled={zoom >= MAX_ZOOM - 0.001}
+          aria-label="Zoom in"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
         </Button>
         <Button
           size="icon"
           variant="secondary"
-          className="h-8 w-8 rounded-lg bg-white shadow-sm"
+          className="h-8 w-8 rounded-full border border-[#3c3c431f] bg-white/92 text-slate-700 shadow-sm backdrop-blur-[8px]"
           onClick={() => {
             setZoom((prev) => Math.max(MIN_ZOOM, prev - ZOOM_STEP));
             setUserHasInteracted(true);
             setShowFocusHint(false);
           }}
+          disabled={zoom <= MIN_ZOOM + 0.001}
+          aria-label="Zoom out"
         >
-          <Minus className="h-4 w-4" />
+          <Minus className="h-3.5 w-3.5" />
         </Button>
+        <Button
+          size="icon"
+          variant="secondary"
+          className="relative h-8 w-8 rounded-full border border-[#ffbd59] bg-[#ffbd59] text-slate-900 shadow-sm backdrop-blur-[8px] hover:border-[#ffbd59] hover:bg-[#ffbd59] active:border-[#ffbd59] active:bg-[#ffbd59]"
+          onClick={handleToggleFocus}
+          aria-pressed={isFocusEnabled}
+          aria-label={isFocusEnabled ? "Disable focus" : "Enable focus"}
+        >
+          <LocateFixed className="h-3.5 w-3.5" />
+          <span
+            className={`absolute bottom-1.5 right-1.5 h-1.5 w-1.5 rounded-full ${isFocusEnabled ? "bg-emerald-500" : "bg-slate-300"}`}
+            aria-hidden="true"
+          />
+        </Button>
+        {hasViewportChanges && (
+          <Button
+            size="icon"
+            variant="secondary"
+            className="h-8 w-8 rounded-full border border-[#3c3c431f] bg-white/92 text-slate-700 shadow-sm backdrop-blur-[8px]"
+            onClick={handleResetViewport}
+            aria-label="Reset zoom and position"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
+        )}
+      </div>
+
+      <div className="absolute right-3 top-3 z-20 hidden flex-col gap-2 md:flex">
+        <Tooltip delayDuration={120}>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="secondary"
+              className="h-10 w-10 rounded-full border border-[#3c3c431f] bg-white/92 text-slate-700 shadow-sm backdrop-blur-[10px]"
+              onClick={() => {
+                setZoom((prev) => Math.min(MAX_ZOOM, prev + ZOOM_STEP));
+                setUserHasInteracted(true);
+                setShowFocusHint(false);
+              }}
+              disabled={zoom >= MAX_ZOOM - 0.001}
+              aria-label="Zoom in"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="bg-white text-xs text-slate-700">Zoom in</TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={120}>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="secondary"
+              className="h-10 w-10 rounded-full border border-[#3c3c431f] bg-white/92 text-slate-700 shadow-sm backdrop-blur-[10px]"
+              onClick={() => {
+                setZoom((prev) => Math.max(MIN_ZOOM, prev - ZOOM_STEP));
+                setUserHasInteracted(true);
+                setShowFocusHint(false);
+              }}
+              disabled={zoom <= MIN_ZOOM + 0.001}
+              aria-label="Zoom out"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="bg-white text-xs text-slate-700">Zoom out</TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={120}>
+          <TooltipTrigger asChild>
+            <Button
+              size="icon"
+              variant="secondary"
+              className="relative h-10 w-10 rounded-full border border-[#ffbd59] bg-[#ffbd59] text-slate-900 shadow-sm backdrop-blur-[10px] hover:border-[#ffbd59] hover:bg-[#ffbd59] active:border-[#ffbd59] active:bg-[#ffbd59]"
+              onClick={handleToggleFocus}
+              aria-pressed={isFocusEnabled}
+              aria-label={isFocusEnabled ? "Disable focus" : "Enable focus"}
+            >
+              <LocateFixed className="h-4 w-4" />
+              <span
+                className={`absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full ${isFocusEnabled ? "bg-emerald-500" : "bg-slate-300"}`}
+                aria-hidden="true"
+              />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="bg-white text-xs text-slate-700">Focus data countries</TooltipContent>
+        </Tooltip>
+
+        {hasViewportChanges && (
+          <Tooltip delayDuration={120}>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-10 w-10 rounded-full border border-[#3c3c431f] bg-white/92 text-slate-700 shadow-sm backdrop-blur-[10px]"
+                onClick={handleResetViewport}
+                aria-label="Reset zoom and position"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="bg-white text-xs text-slate-700">Reset view</TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <svg
@@ -679,14 +930,13 @@ export function WorldMap({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        style={{ cursor: isDragging ? "grabbing" : "grab" }}
+        style={{ cursor: isDragging ? "grabbing" : "grab", touchAction: "none" }}
       >
         <rect width={VIEWBOX.width} height={VIEWBOX.height} fill="#F8FAFC" />
         <g
           ref={groupRef}
           transform={transform}
-          style={{ transition: isAutoZooming ? "transform 420ms ease" : "none" }}
+          style={{ transition: isAutoZooming ? "transform 420ms ease" : "none", willChange: "transform" }}
         >
           {renderedFeatures.map((feature) => (
             <path
@@ -694,8 +944,8 @@ export function WorldMap({
               d={feature.path}
               fill={feature.fill}
               stroke="#F8FAFC"
-              strokeWidth="0.35"
-              className={feature.code ? "cursor-pointer transition-opacity hover:opacity-90" : "opacity-90"}
+              strokeWidth="0.65"
+              className={feature.code ? "cursor-pointer transition-opacity hover:opacity-95" : "opacity-95"}
               role={feature.code ? "button" : "img"}
               tabIndex={feature.code ? 0 : -1}
               aria-label={
@@ -721,18 +971,36 @@ export function WorldMap({
 
           {markerData.map((country) => {
             const isActive = selectedCountryCode === country.code;
+            const markerRadius = country.label.length > 2 ? 16 : 15;
             return (
               <g
                 key={`marker-${country.code}`}
-                className={`origo-marker ${isActive ? "is-active" : ""}`}
+                className={`origo-marker ${country.customerStatus === "mixed" ? "is-mixed" : country.customerStatus === "new" ? "is-new" : "is-existing"} ${isActive ? "is-active" : ""}`}
                 onClick={() => handleMarkerClick(country.code)}
                 onMouseEnter={(event) => handleMarkerEnter(country.code, event)}
                 onMouseLeave={handleMarkerLeave}
               >
-                <circle className="origo-marker-hit" cx={country.x} cy={country.y} r={18} />
-                <circle className="origo-marker-ring" cx={country.x} cy={country.y} r={9} />
-                <circle className="origo-marker-core" cx={country.x} cy={country.y} r={4} />
-                <title>{country.label}</title>
+                <circle className="origo-marker-hit" cx={country.x} cy={country.y} r={Math.max(24, markerRadius + 8)} />
+                {country.customerStatus === "new" && (
+                  <circle
+                    className="origo-marker-glow"
+                    cx={country.x}
+                    cy={country.y}
+                    r={markerRadius + 2}
+                  />
+                )}
+                <circle
+                  className="origo-marker-pill"
+                  cx={country.x}
+                  cy={country.y}
+                  r={markerRadius}
+                />
+                <text className="origo-marker-text" x={country.x} y={country.y}>
+                  {country.label}
+                </text>
+                <title>
+                  {country.name}: {country.customers} customers
+                </title>
               </g>
             );
           })}
@@ -757,7 +1025,7 @@ export function WorldMap({
       {showFocusHint && (
         <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
           <span className="rounded-full bg-white/90 px-3 py-1 text-xs text-muted-foreground shadow-sm">
-            Map is focused on countries with available data.
+            {focusHintMessage}
           </span>
         </div>
       )}

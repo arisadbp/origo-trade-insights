@@ -5,9 +5,11 @@ import {
   Settings,
   LayoutDashboard,
   Package,
+  Boxes,
   FileText,
   TrendingUp,
   Users,
+  Database,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,19 +35,19 @@ export const mainNavItems: NavItem[] = [
     description: "Explore global market data",
   },
   {
-    title: "My Company",
+    title: "THAI ROONG RUANG INDUSTRY CO., LTD.",
     icon: Building2,
     href: "/my-company",
     description: "Executive dashboard",
     children: [
-      { title: "Overview", href: "/my-company", icon: LayoutDashboard },
-      { title: "Orders & Shipments", href: "/my-company/orders", icon: Package },
-      { title: "Invoices & Payments", href: "/my-company/invoices", icon: FileText },
       { title: "Trade Performance", href: "/my-company/performance", icon: TrendingUp },
+      { title: "Orders & Shipments", href: "/my-company/orders", icon: Package },
+      { title: "Inventory", href: "/my-company/inventory", icon: Boxes },
+      { title: "Invoices & Payments", href: "/my-company/invoices", icon: FileText },
     ],
   },
   {
-    title: "Admin Center",
+    title: "Admin Control",
     icon: Upload,
     href: "/upload",
     description: "Upload data files",
@@ -54,13 +56,15 @@ export const mainNavItems: NavItem[] = [
 
 export const adminNavItems: NavItem[] = [
   {
-    title: "Admin",
+    title: "Back Office",
     icon: Settings,
     href: "/admin",
-    description: "System administration",
+    description: "Customer and system management",
     children: [
+      { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
+      { title: "Customer Management", href: "/admin/customers", icon: Building2 },
       { title: "User Management", href: "/admin/users", icon: Users },
-      { title: "Data Management", href: "/admin/data", icon: Settings },
+      { title: "Data Management", href: "/admin/data", icon: Database },
     ],
   },
 ];

@@ -62,6 +62,15 @@ export type CompanyTradeRow = {
   valueUsd?: number;
 };
 
+export type TradeHistoryRow = {
+  month: string;
+  originCountry?: string;
+  counterparty?: string;
+  weightKg: number;
+  shipmentsCount?: number;
+  valueUsd?: number;
+};
+
 export type MetricKey = "weightKg" | "valueUsd";
 
 export type TrendDirection = "up" | "down" | "neutral";

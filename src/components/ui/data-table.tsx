@@ -68,7 +68,7 @@ export function DataTable<T extends { id?: string | number }>({
                   key={column.key}
                   style={{ width: column.width }}
                   className={cn(
-                    "font-semibold text-foreground",
+                    "whitespace-nowrap font-semibold text-foreground",
                     alignClasses[column.align || "left"],
                     column.sortable && "cursor-pointer select-none hover:bg-muted/80"
                   )}

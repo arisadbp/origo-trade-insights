@@ -85,6 +85,33 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Supabase setup
+
+ระบบหลังบ้านสามารถเชื่อมกับ Supabase ได้โดยตรงแล้ว (fallback เป็น local cache หากยังไม่ตั้งค่า env)
+
+1. สร้างโปรเจกต์ใน Supabase และคัดลอก:
+   - `Project URL`
+   - `anon public key`
+2. คัดลอกไฟล์ `.env.example` เป็น `.env.local` แล้วตั้งค่า:
+
+```sh
+VITE_SUPABASE_URL=https://<your-project-id>.supabase.co
+VITE_SUPABASE_ANON_KEY=<your-anon-key>
+```
+
+3. ไปที่ Supabase SQL Editor แล้วรันสคริปต์:
+   - `docs/supabase-schema.sql`
+4. ติดตั้ง dependency และรันแอป:
+
+```sh
+npm i
+npm run dev
+```
+
+หมายเหตุ:
+- หาก Supabase ว่าง ระบบจะ seed ข้อมูล demo เริ่มต้นให้อัตโนมัติ
+- ตารางที่ใช้: `customers`, `admin_users`, `uploads`, `activity_logs`
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.

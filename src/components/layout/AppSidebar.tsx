@@ -9,11 +9,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { adminNavItems, mainNavItems, type NavItem } from "./navItems";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<string[]>(["My Company"]);
+  const [expandedItems, setExpandedItems] = useState<string[]>(["THAI ROONG RUANG INDUSTRY CO., LTD.", "Back Office"]);
   const location = useLocation();
+  const { accountType } = useAuth();
+  const isBackOffice = accountType === "backoffice";
+  const visibleMainNavItems = isBackOffice ? [] : mainNavItems;
+  const visibleAdminNavItems = isBackOffice ? adminNavItems : [];
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) =>
@@ -23,7 +28,8 @@ export function AppSidebar() {
     );
   };
 
-  const isActive = (href: string) => location.pathname === href;
+  const isActive = (href: string) =>
+    location.pathname === href || (href !== "/" && location.pathname.startsWith(`${href}/`));
   const isChildActive = (children?: NavItem["children"]) =>
     children?.some((child) => location.pathname === child.href);
 
@@ -74,10 +80,12 @@ export function AppSidebar() {
                 toggleExpand(item.title);
               }
             }}
-            className="flex items-center gap-3 px-3 py-2.5 flex-1"
+            className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5"
           >
             <item.icon className="h-5 w-5 flex-shrink-0" />
-            <span className="text-sm font-medium">{item.title}</span>
+            <span className="min-w-0 truncate text-sm font-medium" title={item.title}>
+              {item.title}
+            </span>
           </NavLink>
           {hasChildren && (
             <button
@@ -144,15 +152,21 @@ export function AppSidebar() {
 
       {/* Main Navigation */}
       <nav className="flex-1 p-3 space-y-1.5">
-        <div className="space-y-1">
-          {mainNavItems.map(renderNavItem)}
-        </div>
-        
-        <div className="my-4 border-t border-sidebar-border" />
-        
-        <div className="space-y-1">
-          {adminNavItems.map(renderNavItem)}
-        </div>
+        {visibleMainNavItems.length > 0 && (
+          <div className="space-y-1">
+            {visibleMainNavItems.map(renderNavItem)}
+          </div>
+        )}
+
+        {visibleMainNavItems.length > 0 && visibleAdminNavItems.length > 0 && (
+          <div className="my-4 border-t border-sidebar-border" />
+        )}
+
+        {visibleAdminNavItems.length > 0 && (
+          <div className="space-y-1">
+            {visibleAdminNavItems.map(renderNavItem)}
+          </div>
+        )}
       </nav>
 
       {/* Collapse Toggle */}
