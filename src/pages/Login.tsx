@@ -23,9 +23,9 @@ export default function Login() {
           <div className="absolute -left-20 -top-24 h-64 w-64 rounded-full bg-primary/20 blur-3xl" />
           <div className="absolute -bottom-24 right-0 h-72 w-72 rounded-full bg-data-500/20 blur-3xl" />
           <div className="relative z-10 mx-auto max-w-xl space-y-6 text-center">
-            <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-[2rem] border border-white/10 bg-sidebar-accent/40 p-3 shadow-[0_24px_70px_rgba(0,0,0,0.34)]">
+            <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-[2rem] border border-white/10 bg-sidebar-accent/40 p-3 shadow-[0_24px_70px_rgba(0,0,0,0.34)]">
               <div className="flex h-full w-full items-center justify-center rounded-[1.6rem] border border-white/15 bg-sidebar-accent/80">
-                <Building2 className="h-16 w-16 text-primary" />
+                <Building2 className="h-20 w-20 text-primary" />
               </div>
             </div>
             <div className="space-y-3">
@@ -45,9 +45,9 @@ export default function Login() {
 
         <div className="flex flex-col items-center justify-center px-6 py-12">
           <div className="mb-8 flex w-full max-w-md flex-col items-center gap-3 text-center lg:hidden">
-            <div className="flex h-24 w-24 items-center justify-center rounded-3xl border border-border/70 bg-muted/30 p-2">
+            <div className="flex h-28 w-28 items-center justify-center rounded-3xl border border-border/70 bg-muted/30 p-2">
               <div className="flex h-full w-full items-center justify-center rounded-2xl border border-border/70 bg-background">
-                <Building2 className="h-10 w-10 text-primary" />
+                <Building2 className="h-12 w-12 text-primary" />
               </div>
             </div>
             <div className="space-y-1">
