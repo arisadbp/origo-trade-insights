@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Bell, ChevronDown, HelpCircle, Menu } from "lucide-react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 interface TopBarProps {
   title?: string;
   subtitle?: string;
+  contextBar?: ReactNode;
 }
 
 function MobileMenuSection({
@@ -96,18 +97,19 @@ function MobileMenuSection({
   );
 }
 
-export function TopBar({ title, subtitle }: TopBarProps) {
+export function TopBar({ title, subtitle, contextBar }: TopBarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { accountType, displayName, email, logout } = useAuth();
-  const isBackOffice = accountType === "backoffice";
+  const isBackOffice = accountType === "admin";
   const mobileMainItems = isBackOffice ? [] : mainNavItems;
   const mobileAdminItems = isBackOffice ? adminNavItems : [];
 
   return (
-    <header className="origo-topbar sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-card/88 px-2 backdrop-blur-sm sm:px-3 md:h-16 md:px-6">
-      <div className="flex min-w-0 items-center gap-2 md:gap-4">
+    <div className="sticky top-0 z-30">
+      <header className="origo-topbar flex h-14 items-center justify-between border-b bg-card/88 px-2 backdrop-blur-sm sm:px-3 md:h-16 md:px-6">
+        <div className="flex min-w-0 items-center gap-2 md:gap-4">
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild>
             <Button
@@ -163,9 +165,9 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             )}
           </div>
         )}
-      </div>
+        </div>
 
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         <Button variant="ghost" size="icon" className="hidden text-muted-foreground sm:inline-flex">
           <HelpCircle className="h-5 w-5" />
         </Button>
@@ -237,17 +239,22 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive"
-              onClick={() => {
-                const currentType = accountType;
-                logout();
-                navigate(currentType === "backoffice" ? "/backoffice/login" : "/login", { replace: true });
+              onClick={async () => {
+                await logout();
+                navigate("/login", { replace: true });
               }}
             >
               Sign Out
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      </div>
-    </header>
+        </div>
+      </header>
+      {contextBar ? (
+        <div className="border-b bg-card/95 px-3 py-2 backdrop-blur-sm md:px-6">
+          {contextBar}
+        </div>
+      ) : null}
+    </div>
   );
 }

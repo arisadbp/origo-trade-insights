@@ -10,6 +10,7 @@ import {
   TrendingUp,
   Users,
   Database,
+  Shield,
   type LucideIcon,
 } from "lucide-react";
 
@@ -61,7 +62,8 @@ export const adminNavItems: NavItem[] = [
     href: "/admin",
     description: "Customer and system management",
     children: [
-      { title: "Dashboard", href: "/admin", icon: LayoutDashboard },
+      { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+      { title: "Admin Backoffice", href: "/admin/backoffice", icon: Shield },
       { title: "Customer Management", href: "/admin/customers", icon: Building2 },
       { title: "User Management", href: "/admin/users", icon: Users },
       { title: "Data Management", href: "/admin/data", icon: Database },

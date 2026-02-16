@@ -9,6 +9,12 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      "/api/admin": {
+        target: "http://localhost:4000",
+        changeOrigin: true,
+      },
+    },
     hmr: {
       overlay: false,
     },

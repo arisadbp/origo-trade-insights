@@ -16,7 +16,7 @@ export function AppSidebar() {
   const [expandedItems, setExpandedItems] = useState<string[]>(["THAI ROONG RUANG INDUSTRY CO., LTD.", "Back Office"]);
   const location = useLocation();
   const { accountType } = useAuth();
-  const isBackOffice = accountType === "backoffice";
+  const isBackOffice = accountType === "admin";
   const visibleMainNavItems = isBackOffice ? [] : mainNavItems;
   const visibleAdminNavItems = isBackOffice ? adminNavItems : [];
 

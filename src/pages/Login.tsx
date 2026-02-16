@@ -11,8 +11,10 @@ import { useAuth } from "@/contexts/AuthContext";
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -57,29 +59,39 @@ export default function Login() {
 
           <Card className="w-full max-w-md">
             <CardHeader className="space-y-2">
-              <CardTitle>Customer Sign In</CardTitle>
-              <CardDescription>Use your client account to access your company dashboard.</CardDescription>
+              <CardTitle>Sign In</CardTitle>
+              <CardDescription>Use your email or username and password.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <form
                 className="space-y-4"
-                onSubmit={(event) => {
+                onSubmit={async (event) => {
                   event.preventDefault();
-                  login("customer", email);
-                  navigate("/market-intelligence", { replace: true });
+                  setError(null);
+                  setIsSubmitting(true);
+
+                  const result = await login(identifier, password);
+                  setIsSubmitting(false);
+
+                  if (!result.success || !result.accountType) {
+                    setError(result.error ?? "Invalid credentials");
+                    return;
+                  }
+
+                  navigate(result.accountType === "admin" ? "/admin" : "/market-intelligence", { replace: true });
                 }}
               >
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="identifier">Email or Username</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder="you@company.com"
+                      id="identifier"
+                      type="text"
+                      placeholder="you@company.com or username"
                       className="pl-10"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
+                      value={identifier}
+                      onChange={(event) => setIdentifier(event.target.value)}
                       required
                     />
                   </div>
@@ -114,23 +126,25 @@ export default function Login() {
                     <Checkbox checked={remember} onCheckedChange={(value) => setRemember(Boolean(value))} />
                     Remember me
                   </label>
-                  <a href="#" className="text-sm text-primary hover:underline">
+                  <Link to="/forgot-password" className="text-sm text-primary hover:underline">
                     Forgot password?
-                  </a>
+                  </Link>
                 </div>
 
+                {error ? (
+                  <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {error}
+                  </p>
+                ) : null}
+
                 <Button type="submit" className="w-full">
-                  Sign in
+                  {isSubmitting ? "Signing in..." : "Sign in"}
                 </Button>
               </form>
 
               <div className="rounded-lg border bg-secondary/60 px-4 py-3 text-xs text-muted-foreground">
-                Demo mode: any email/password can be used.
+                Admin and Customer use the same sign-in page.
               </div>
-
-              <p className="text-xs text-muted-foreground">
-                ORIGO internal staff? Go to <Link className="text-primary underline" to="/backoffice/login">Back Office login</Link>.
-              </p>
             </CardContent>
           </Card>
         </div>

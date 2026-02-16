@@ -19,6 +19,7 @@ import { CompanyProfileDrawer } from "@/components/market/CompanyProfileDrawer";
 import { MarketAnalysisTab } from "@/components/market-analysis/MarketAnalysisTab";
 import { TopBar } from "@/components/layout/TopBar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { cn } from "@/lib/utils";
 import { getFlagEmoji } from "@/lib/flags";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -655,7 +656,7 @@ export default function MarketIntelligence() {
       sortable: true,
       render: (item: typeof companySummaries[number]) => (
         <div className="flex items-center gap-2">
-          <span className="text-lg">{getFlagEmoji(item.countryCode)}</span>
+          <CountryFlag countryCode={item.countryCode} countryName={getCountryLabel(item.countryCode)} size="sm" />
           <div>
             <p className="font-medium">{getCountryLabel(item.countryCode)}</p>
             <p className="text-xs text-muted-foreground">{item.countryCode || "—"}</p>
@@ -1085,7 +1086,7 @@ export default function MarketIntelligence() {
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex items-center gap-3">
-                              <span className="text-2xl">{getFlagEmoji(item.countryCode)}</span>
+                              <CountryFlag countryCode={item.countryCode} countryName={getCountryLabel(item.countryCode)} size="md" />
                               <div className="min-w-0">
                                 <p className="truncate font-semibold text-foreground">{item.name}</p>
                                 {focusedCompanySet.has(item.id) && (

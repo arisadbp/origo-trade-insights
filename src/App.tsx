@@ -16,22 +16,28 @@ import MyCompany from "./pages/MyCompany";
 import NotFound from "./pages/NotFound";
 import OrdersShipments from "./pages/OrdersShipments";
 import UploadCenter from "./pages/UploadCenter";
-import BackOfficeLogin from "./pages/BackOfficeLogin";
 import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDataManagement from "./pages/admin/AdminDataManagement";
 import AdminUsers from "./pages/admin/AdminUsers";
+import AdminBackoffice from "./pages/admin/AdminBackoffice";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 const queryClient = new QueryClient();
 
 function HomeRedirect() {
-  const { isAuthenticated, accountType } = useAuth();
+  const { loading, isAuthenticated, accountType } = useAuth();
+
+  if (loading) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (accountType === "backoffice") {
+  if (accountType === "admin") {
     return <Navigate to="/admin" replace />;
   }
 
@@ -39,26 +45,34 @@ function HomeRedirect() {
 }
 
 function PublicOnly({ children }: { children: ReactElement }) {
-  const { isAuthenticated, accountType } = useAuth();
+  const { loading, isAuthenticated, accountType } = useAuth();
+
+  if (loading) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return children;
   }
 
-  return accountType === "backoffice"
+  return accountType === "admin"
     ? <Navigate to="/admin" replace />
     : <Navigate to="/market-intelligence" replace />;
 }
 
 function ProtectedLayout({ allowedAccountType }: { allowedAccountType: AccountType }) {
-  const { isAuthenticated, accountType } = useAuth();
+  const { loading, isAuthenticated, accountType } = useAuth();
+
+  if (loading) {
+    return null;
+  }
 
   if (!isAuthenticated) {
-    return <Navigate to={allowedAccountType === "backoffice" ? "/backoffice/login" : "/login"} replace />;
+    return <Navigate to="/login" replace />;
   }
 
   if (accountType !== allowedAccountType) {
-    return <Navigate to={accountType === "backoffice" ? "/admin" : "/market-intelligence"} replace />;
+    return <Navigate to={accountType === "admin" ? "/admin" : "/market-intelligence"} replace />;
   }
 
   return <AppLayout />;
@@ -83,12 +97,13 @@ const App = () => (
                 )}
               />
               <Route
-                path="/backoffice/login"
-                element={(
-                  <PublicOnly>
-                    <BackOfficeLogin />
-                  </PublicOnly>
-                )}
+                path="/forgot-password"
+                element={<ForgotPassword />}
+              />
+              <Route path="/backoffice/login" element={<Navigate to="/login" replace />} />
+              <Route
+                path="/reset-password"
+                element={<ResetPassword />}
               />
 
               <Route element={<ProtectedLayout allowedAccountType="customer" />}>
@@ -102,8 +117,10 @@ const App = () => (
                 <Route path="/upload" element={<UploadCenter />} />
               </Route>
 
-              <Route element={<ProtectedLayout allowedAccountType="backoffice" />}>
-                <Route path="/admin" element={<AdminDashboard />} />
+              <Route element={<ProtectedLayout allowedAccountType="admin" />}>
+                <Route path="/admin" element={<AdminBackoffice />} />
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                <Route path="/admin/backoffice" element={<AdminBackoffice />} />
                 <Route path="/admin/customers" element={<AdminCustomers />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/admin/data" element={<AdminDataManagement />} />

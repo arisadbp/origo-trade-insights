@@ -114,6 +114,20 @@ const parseDateToDayMs = (value: string | null) => {
   return date.getTime();
 };
 
+const isPendingStatus = (statusType: string) => statusType.trim().toLowerCase() === "pending";
+
+const isOverdueInvoice = (row: Pick<InvoiceRow, "statusType" | "invoiceDate">) => {
+  if (!isPendingStatus(row.statusType)) return false;
+  const invoiceMs = parseDateToDayMs(row.invoiceDate);
+  if (invoiceMs === null) return false;
+  const nowMs = new Date().setHours(0, 0, 0, 0);
+  const dayMs = 1000 * 60 * 60 * 24;
+  return nowMs - invoiceMs > 3 * dayMs;
+};
+
+const getDisplayStatusType = (row: Pick<InvoiceRow, "statusType" | "invoiceDate">) =>
+  isOverdueInvoice(row) ? "Overdue" : row.statusType;
+
 const toStatusBucket = (statusType: string): StatusBucketKey => {
   const normalized = statusType.trim().toLowerCase();
   if (normalized.includes("final")) return "final";
@@ -123,6 +137,9 @@ const toStatusBucket = (statusType: string): StatusBucketKey => {
 };
 
 const statusBadgeFromType = (statusType: string) => {
+  if (statusType.trim().toLowerCase() === "overdue") {
+    return <StatusBadge status="error" label="Overdue" showIcon={false} className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide" />;
+  }
   const bucket = toStatusBucket(statusType);
   if (bucket === "final") {
     return <StatusBadge status="success" label="Final Price" showIcon={false} className="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide" />;
@@ -268,7 +285,7 @@ export default function InvoicesPayments() {
   );
 
   const uniqueStatuses = useMemo(
-    () => [...new Set(rows.map((row) => row.statusType).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    () => [...new Set(rows.map((row) => getDisplayStatusType(row)).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [rows],
   );
 
@@ -279,7 +296,8 @@ export default function InvoicesPayments() {
     const nowMs = new Date().setHours(0, 0, 0, 0);
     const dayMs = 1000 * 60 * 60 * 24;
     return rows.filter((row) => {
-      const statusMatch = statusFilter === "all" || row.statusType === statusFilter;
+      const displayStatus = getDisplayStatusType(row);
+      const statusMatch = statusFilter === "all" || displayStatus === statusFilter;
       const factoryMatch = factoryFilter === "all" || row.factory === factoryFilter;
       if (!statusMatch || !factoryMatch) return false;
 
@@ -293,10 +311,7 @@ export default function InvoicesPayments() {
       }
 
       if (attentionFilter === "overdue_invoices") {
-        const normalized = row.statusType.toLowerCase();
-        if (normalized.includes("paid") || normalized.includes("cancel") || normalized.includes("void")) return false;
-        const dueMs = parseDateToDayMs(row.invoiceDate);
-        if (dueMs === null || dueMs >= nowMs) return false;
+        if (!isOverdueInvoice(row)) return false;
       }
 
       if (attentionFilter === "followup_invoices") {
@@ -317,7 +332,7 @@ export default function InvoicesPayments() {
         row.contract.toLowerCase().includes(term) ||
         row.bookingNo.toLowerCase().includes(term) ||
         row.factory.toLowerCase().includes(term) ||
-        row.statusType.toLowerCase().includes(term)
+        displayStatus.toLowerCase().includes(term)
       );
     });
   }, [rows, search, statusFilter, factoryFilter, attentionFilter, invoiceDateFrom, invoiceDateTo]);
@@ -345,14 +360,12 @@ export default function InvoicesPayments() {
   const summary = useMemo(() => {
     const totalUsd = rows.reduce((sum, row) => sum + row.usd, 0);
     const totalThb = rows.reduce((sum, row) => sum + row.thb, 0);
-    const creditRows = rows.filter((row) => row.credit);
-    const creditUsd = creditRows.reduce((sum, row) => sum + row.usd, 0);
+    const overdueRows = rows.filter((row) => isOverdueInvoice(row));
     const avgConvertRate = rows.length === 0 ? 0 : rows.reduce((sum, row) => sum + row.convertRate, 0) / rows.length;
     return {
       totalUsd,
       totalThb,
-      creditCount: creditRows.length,
-      creditUsd,
+      overdueCount: overdueRows.length,
       avgConvertRate,
       totalCount: rows.length,
     };
@@ -361,7 +374,7 @@ export default function InvoicesPayments() {
   const statusMix = useMemo(() => {
     const map = new Map<StatusBucketKey, { count: number; usd: number }>();
     rows.forEach((row) => {
-      const bucket = toStatusBucket(row.statusType);
+      const bucket = toStatusBucket(getDisplayStatusType(row));
       const current = map.get(bucket) ?? { count: 0, usd: 0 };
       current.count += 1;
       current.usd += row.usd;
@@ -441,7 +454,7 @@ export default function InvoicesPayments() {
       key: "statusType",
       header: "Status",
       align: "center" as const,
-      render: (item: InvoiceRow) => statusBadgeFromType(item.statusType),
+      render: (item: InvoiceRow) => statusBadgeFromType(getDisplayStatusType(item)),
     },
     {
       key: "action",
@@ -510,13 +523,13 @@ export default function InvoicesPayments() {
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-500">THB</p>
                   </div>
-                  <div className="min-w-0 rounded-3xl border border-amber-100 bg-amber-50/70 px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700/80">Credit Invoices</p>
-                    <p className="mt-1.5 text-[24px] font-semibold leading-none tracking-tight text-amber-700 tabular-nums md:text-[30px]">
-                      {numberFormatter.format(summary.creditCount)}
+                  <div className="min-w-0 rounded-3xl border border-rose-100 bg-rose-50/70 px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700/80">Overdue Invoices</p>
+                    <p className="mt-1.5 text-[24px] font-semibold leading-none tracking-tight text-rose-700 tabular-nums md:text-[30px]">
+                      {numberFormatter.format(summary.overdueCount)}
                     </p>
                     <div className="mt-2">
-                      <AlertCircle className="h-4 w-4 text-amber-700/70" />
+                      <AlertCircle className="h-4 w-4 text-rose-700/70" />
                     </div>
                   </div>
                   <div className="min-w-0 rounded-3xl border border-border/60 bg-card/80 px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)]">
@@ -770,7 +783,7 @@ export default function InvoicesPayments() {
                 </div>
                 <div className="rounded-lg border bg-background px-3 py-2">
                   <p className="text-[11px] text-muted-foreground">Status</p>
-                  <div className="mt-1">{statusBadgeFromType(selectedInvoice.statusType)}</div>
+                  <div className="mt-1">{statusBadgeFromType(getDisplayStatusType(selectedInvoice))}</div>
                 </div>
               </div>
 

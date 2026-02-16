@@ -354,19 +354,34 @@ const mapCompanyInfoRow = (row: GenericSupabaseRow, fallbackCompanyId: string): 
 });
 
 const mapCompanyContactRow = (row: GenericSupabaseRow, fallbackCompanyId: string, index: number): CompanyContactRow => {
-  const company = toTextOrNull(getCandidateValue(row, ["company_id", "companyid"])) ?? fallbackCompanyId;
+  const company = toTextOrNull(getCandidateValue(row, ["company_id", "companyid", "companyId", "customer_id", "customerid", "id"])) ?? fallbackCompanyId;
   return {
     id: toTextOrNull(getCandidateValue(row, ["id"])) ?? `contact-${company}-${index}`,
     company_id: company,
-    name: toTextOrNull(getCandidateValue(row, ["name", "contact_name", "contact"])),
-    position: toTextOrNull(getCandidateValue(row, ["position", "job_title", "title"])),
-    department: toTextOrNull(getCandidateValue(row, ["department", "team"])),
+    name: toTextOrNull(
+      getCandidateValue(row, [
+        "name",
+        "contact_name",
+        "contact",
+        "full_name",
+        "fullname",
+        "contact_person",
+        "contactperson",
+        "person_name",
+        "representative",
+        "representative_name",
+        "owner_name",
+        "pic_name",
+      ]),
+    ),
+    position: toTextOrNull(getCandidateValue(row, ["position", "job_title", "title", "role", "designation"])),
+    department: toTextOrNull(getCandidateValue(row, ["department", "team", "division", "function"])),
     employment_date: toTextOrNull(getCandidateValue(row, ["employment_date", "employment_year", "joined_at"])),
-    business_email: toTextOrNull(getCandidateValue(row, ["business_email", "email"])),
+    business_email: toTextOrNull(getCandidateValue(row, ["business_email", "email", "company_email", "work_email"])),
     supplement_email_1: toTextOrNull(getCandidateValue(row, ["supplement_email_1", "email_1", "secondary_email"])),
     supplement_email_2: toTextOrNull(getCandidateValue(row, ["supplement_email_2", "email_2", "alternate_email"])),
     social_media: toTextOrNull(getCandidateValue(row, ["social_media"])),
-    tel: toTextOrNull(getCandidateValue(row, ["tel", "phone", "telephone"])),
+    tel: toTextOrNull(getCandidateValue(row, ["tel", "phone", "telephone", "mobile", "phone_number", "contact_number"])),
     fax: toTextOrNull(getCandidateValue(row, ["fax"])),
     whatsapp: toTextOrNull(getCandidateValue(row, ["whatsapp"])),
     linkedin: toTextOrNull(getCandidateValue(row, ["linkedin"])),
@@ -796,7 +811,7 @@ const shellCardClass =
 const contentCardClass =
   "rounded-2xl border border-border/60 bg-card";
 const tabTriggerClass =
-  "rounded-lg border border-transparent px-3.5 py-2 text-sm font-medium text-muted-foreground transition data-[state=active]:border-border/70 data-[state=active]:bg-background data-[state=active]:text-foreground";
+  "rounded-lg border border-transparent px-3.5 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground data-[state=active]:border-[#ffbd59] data-[state=active]:bg-[#ffbd59] data-[state=active]:text-[#3b2a06]";
 
 export default function MarketIntelligenceCompanyProfile() {
   const navigate = useNavigate();
@@ -885,7 +900,7 @@ export default function MarketIntelligenceCompanyProfile() {
           ascending: boolean,
           limit?: number,
         ) => {
-          const companyIdFilterCandidates = ["company_id", "companyid", "companyId"];
+          const companyIdFilterCandidates = ["company_id", "companyid", "companyId", "customer_id", "customerid", "id"];
 
           for (const filterKey of companyIdFilterCandidates) {
             let query = supabase
@@ -971,7 +986,7 @@ export default function MarketIntelligenceCompanyProfile() {
 
         const fetchContacts = async () => {
           const rawRows = await fetchOptionalListFromCandidates<GenericSupabaseRow>(
-            ["company_contacts", "company_contact"],
+            ["company_contract", "company_contacts", "company_contact", "customer_contacts", "customer_contact", "contacts", "contact", "customers"],
             "created_at",
             true,
             200,
@@ -1612,6 +1627,10 @@ export default function MarketIntelligenceCompanyProfile() {
                             const primaryEmail = contact.business_email || contact.supplement_email_1 || contact.supplement_email_2;
                             const callablePhone = pickFirstText(contact.tel, contact.whatsapp);
                             const phoneDisplay = callablePhone || pickFirstText(contact.social_media, contact.fax);
+                            const displayName =
+                              contact.name ||
+                              (primaryEmail ? primaryEmail.split("@")[0] : undefined) ||
+                              "Unknown contact";
                             const socialActions = [
                               { label: "LinkedIn", href: normalizeUrl(contact.linkedin) },
                               { label: "Twitter", href: normalizeUrl(contact.twitter) },
@@ -1626,7 +1645,7 @@ export default function MarketIntelligenceCompanyProfile() {
                               >
                                 <div className="flex items-start justify-between gap-3">
                                   <div>
-                                    <p className="font-semibold text-foreground">{contact.name || "Unknown contact"}</p>
+                                    <p className="font-semibold text-foreground">{displayName}</p>
                                     <p className="text-sm text-muted-foreground">{contact.position || "Position not available"}</p>
                                   </div>
                                   {contact.employment_date ? (

@@ -85,6 +85,15 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Admin Backoffice (REST + UI)
+
+- API server: `server/index.js`
+- DB migrations/seed: `server/migrations`
+- Admin UI route: `/admin/backoffice`
+- Run both services: `npm run dev:full`
+- Setup guide: `docs/admin-backoffice-setup.md`
+- API reference: `docs/admin-backoffice-api.md`
+
 ## Supabase setup
 
 ระบบหลังบ้านสามารถเชื่อมกับ Supabase ได้โดยตรงแล้ว (fallback เป็น local cache หากยังไม่ตั้งค่า env)
