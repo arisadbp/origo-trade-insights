@@ -63,26 +63,26 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
     booleanColumns: [],
     dropdownColumns: ["status"],
     hiddenColumns: ["delivery_id"],
-    tableMinWidthClass: "min-w-[1180px]",
+    tableMinWidthClass: "min-w-0",
     columnWidthClasses: {
-      contract_id: "w-[190px]",
-      job: "w-[140px]",
-      delivery_date: "w-[150px]",
-      record: "w-[180px]",
-      status: "w-[120px]",
-      quantity: "w-[130px]",
-      remark: "w-[300px]",
-      created_at: "w-[170px]",
+      contract_id: "w-[14%]",
+      job: "w-[10%]",
+      delivery_date: "w-[11%]",
+      record: "w-[14%]",
+      status: "w-[9%]",
+      quantity: "w-[8%]",
+      remark: "w-[22%]",
+      created_at: "w-[12%]",
     },
     columnMinWidthClasses: {
-      contract_id: "min-w-[170px]",
-      job: "min-w-[120px]",
-      delivery_date: "min-w-[130px]",
-      record: "min-w-[140px]",
-      status: "min-w-[120px]",
-      quantity: "min-w-[110px]",
-      remark: "min-w-[240px]",
-      created_at: "min-w-[150px]",
+      contract_id: "min-w-[110px]",
+      job: "min-w-[90px]",
+      delivery_date: "min-w-[100px]",
+      record: "min-w-[110px]",
+      status: "min-w-[90px]",
+      quantity: "min-w-[90px]",
+      remark: "min-w-[150px]",
+      created_at: "min-w-[100px]",
     },
     wrapColumns: ["remark"],
   },
@@ -97,6 +97,7 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
     booleanColumns: [],
     dropdownColumns: ["factory"],
     hiddenColumns: ["stock_id"],
+    tableMinWidthClass: "min-w-0",
   },
   finance_invoices: {
     key: "finance_invoices",
@@ -122,6 +123,7 @@ const DATASETS: Record<DatasetKey, DatasetConfig> = {
     booleanColumns: ["contact", "credit", "export"],
     dropdownColumns: ["status_type", "status", "team"],
     hiddenColumns: ["id", "contact", "credit", "export", "status_detail"],
+    tableMinWidthClass: "min-w-0",
   },
 };
 
@@ -542,14 +544,14 @@ export default function AdminControlEditData() {
               <div className="space-y-3">
                 <div className="overflow-hidden rounded-2xl border border-border/70 bg-card">
                   <div className="hidden overflow-x-auto md:block">
-                    <table className={cn("w-full border-separate border-spacing-0", config.tableMinWidthClass ?? "min-w-[1320px]")}>
+                    <table className={cn("w-full table-fixed border-separate border-spacing-0", config.tableMinWidthClass ?? "min-w-0")}>
                       <thead>
                         <tr className="border-b border-slate-200/70 bg-slate-50/90">
                           {columns.map((column) => (
                             <th
                               key={column}
                               className={cn(
-                                "whitespace-nowrap px-5 py-3.5 text-left text-[13px] font-semibold tracking-[0.01em] text-slate-600",
+                                "px-3 py-3 text-left text-[12px] font-semibold tracking-[0.01em] text-slate-600",
                                 config.columnWidthClasses?.[column],
                                 config.numberColumns.includes(column) && "text-right",
                               )}
@@ -557,7 +559,7 @@ export default function AdminControlEditData() {
                               {column}
                             </th>
                           ))}
-                          <th className="w-[220px] whitespace-nowrap px-5 py-3.5 text-right text-[13px] font-semibold tracking-[0.01em] text-slate-600">
+                          <th className="w-[120px] px-3 py-3 text-right text-[12px] font-semibold tracking-[0.01em] text-slate-600">
                             Actions
                           </th>
                         </tr>
@@ -596,8 +598,8 @@ export default function AdminControlEditData() {
                                       <td
                                         key={column}
                                         className={cn(
-                                          "px-5 py-3 align-middle",
-                                          config.columnMinWidthClasses?.[column] ?? "min-w-[180px]",
+                                          "px-3 py-3 align-middle",
+                                          config.columnMinWidthClasses?.[column] ?? "min-w-[96px]",
                                         )}
                                       >
                                         {isBooleanColumn ? (
@@ -662,7 +664,7 @@ export default function AdminControlEditData() {
                                     <td
                                       key={column}
                                       className={cn(
-                                        "px-5 py-3.5 align-middle text-sm",
+                                        "px-3 py-3.5 align-middle text-xs",
                                         config.columnWidthClasses?.[column],
                                         config.numberColumns.includes(column) && "text-right tabular-nums",
                                       )}
@@ -674,22 +676,30 @@ export default function AdminControlEditData() {
                                     </td>
                                   );
                                 })}
-                                <td className="px-5 py-3.5 text-right align-middle">
+                                <td className="px-3 py-3.5 text-right align-middle">
                                   {isEditing ? (
                                     <div className="inline-flex items-center gap-1.5">
                                       <Button
                                         type="button"
                                         size="sm"
-                                        className="h-8 rounded-full bg-[#ffbd59] px-3 text-[#3b2a06] hover:bg-[#ffbd59]/90"
+                                        className="h-8 rounded-full bg-[#ffbd59] px-2.5 text-[#3b2a06] hover:bg-[#ffbd59]/90"
                                         onClick={() => void saveEdit()}
                                         disabled={saving}
+                                        aria-label="Save row"
                                       >
-                                        <Save className="mr-1 h-3.5 w-3.5" />
-                                        Save
+                                        <Save className="h-3.5 w-3.5" />
+                                        <span className="hidden xl:inline xl:pl-1">Save</span>
                                       </Button>
-                                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-full px-3" onClick={cancelEdit}>
-                                        <X className="mr-1 h-3.5 w-3.5" />
-                                        Cancel
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-8 rounded-full px-2.5"
+                                        onClick={cancelEdit}
+                                        aria-label="Cancel edit"
+                                      >
+                                        <X className="h-3.5 w-3.5" />
+                                        <span className="hidden xl:inline xl:pl-1">Cancel</span>
                                       </Button>
                                     </div>
                                   ) : (
@@ -698,25 +708,27 @@ export default function AdminControlEditData() {
                                         type="button"
                                         variant="outline"
                                         size="sm"
-                                        className="h-8 rounded-full px-3"
+                                        className="h-8 rounded-full px-2.5"
                                         onClick={() => beginEdit(row, rowKey)}
                                         disabled={!canEdit || saving}
                                         title={!canEdit ? `Missing primary key (${config.primaryKey})` : "Edit row"}
+                                        aria-label="Edit row"
                                       >
-                                        <Pencil className="mr-1 h-3.5 w-3.5" />
-                                        Edit
+                                        <Pencil className="h-3.5 w-3.5" />
+                                        <span className="hidden xl:inline xl:pl-1">Edit</span>
                                       </Button>
                                       <Button
                                         type="button"
                                         variant="outline"
                                         size="sm"
-                                        className="h-8 rounded-full border-red-200 px-3 text-red-700 hover:bg-red-50 hover:text-red-800"
+                                        className="h-8 rounded-full border-red-200 px-2.5 text-red-700 hover:bg-red-50 hover:text-red-800"
                                         onClick={() => void deleteRow(primaryValue)}
                                         disabled={!canEdit || saving}
                                         title={!canEdit ? `Missing primary key (${config.primaryKey})` : "Delete row"}
+                                        aria-label="Delete row"
                                       >
-                                        <Trash2 className="mr-1 h-3.5 w-3.5" />
-                                        Delete
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                        <span className="hidden xl:inline xl:pl-1">Delete</span>
                                       </Button>
                                     </div>
                                   )}

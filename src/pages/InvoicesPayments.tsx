@@ -103,12 +103,41 @@ const formatDate = (value: string | null) => {
 
 const parseDateToDayMs = (value: string | null) => {
   if (!value) return null;
-  const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (dateOnlyMatch) {
     const [, year, month, day] = dateOnlyMatch;
-    return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+    if (
+      parsed.getFullYear() !== Number(year) ||
+      parsed.getMonth() !== Number(month) - 1 ||
+      parsed.getDate() !== Number(day)
+    ) {
+      return null;
+    }
+    return parsed.getTime();
   }
-  const date = new Date(value);
+
+  const dayMonthYearMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/);
+  if (dayMonthYearMatch) {
+    const [, dayText, monthText, yearText] = dayMonthYearMatch;
+    const day = Number(dayText);
+    const month = Number(monthText);
+    const year = yearText.length === 2 ? 2000 + Number(yearText) : Number(yearText);
+    const parsed = new Date(year, month - 1, day);
+    if (
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      return null;
+    }
+    return parsed.getTime();
+  }
+
+  const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) return null;
   date.setHours(0, 0, 0, 0);
   return date.getTime();
@@ -504,12 +533,12 @@ export default function InvoicesPayments() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="min-w-0 rounded-3xl border border-border/60 bg-card/80 px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-sm">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Invoice USD</p>
-                    <p className="mt-1.5 text-[22px] font-semibold leading-tight tracking-tight text-slate-900 tabular-nums sm:text-[24px] md:text-[30px]">
-                      <span className="md:hidden">{compactCurrencyFormatter.format(summary.totalUsd)}</span>
-                      <span className="hidden md:inline">{currencyFormatter.format(summary.totalUsd)}</span>
+                    <p className="mt-1.5 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-semibold leading-tight tracking-tight text-slate-900 tabular-nums sm:text-[24px] lg:text-[28px] xl:text-[30px]">
+                      <span className="xl:hidden">{compactCurrencyFormatter.format(summary.totalUsd)}</span>
+                      <span className="hidden xl:inline">{currencyFormatter.format(summary.totalUsd)}</span>
                     </p>
                     <div className="mt-2">
                       <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -517,15 +546,15 @@ export default function InvoicesPayments() {
                   </div>
                   <div className="min-w-0 rounded-3xl border border-border/60 bg-gradient-to-br from-slate-50 to-card px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)]">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Invoice THB</p>
-                    <p className="mt-1.5 text-[22px] font-semibold leading-tight tracking-tight text-slate-900 tabular-nums sm:text-[24px] md:text-[30px]">
-                      <span className="md:hidden">{compactNumberFormatter.format(summary.totalThb)}</span>
-                      <span className="hidden md:inline">{numberFormatter.format(summary.totalThb)}</span>
+                    <p className="mt-1.5 overflow-hidden text-ellipsis whitespace-nowrap text-[22px] font-semibold leading-tight tracking-tight text-slate-900 tabular-nums sm:text-[24px] lg:text-[28px] xl:text-[30px]">
+                      <span className="xl:hidden">{compactNumberFormatter.format(summary.totalThb)}</span>
+                      <span className="hidden xl:inline">{numberFormatter.format(summary.totalThb)}</span>
                     </p>
                     <p className="mt-1 text-xs font-medium text-slate-500">THB</p>
                   </div>
                   <div className="min-w-0 rounded-3xl border border-rose-100 bg-rose-50/70 px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700/80">Overdue Invoices</p>
-                    <p className="mt-1.5 text-[24px] font-semibold leading-none tracking-tight text-rose-700 tabular-nums md:text-[30px]">
+                    <p className="mt-1.5 overflow-hidden text-ellipsis whitespace-nowrap text-[24px] font-semibold leading-none tracking-tight text-rose-700 tabular-nums lg:text-[28px] xl:text-[30px]">
                       {numberFormatter.format(summary.overdueCount)}
                     </p>
                     <div className="mt-2">
@@ -534,7 +563,7 @@ export default function InvoicesPayments() {
                   </div>
                   <div className="min-w-0 rounded-3xl border border-border/60 bg-card/80 px-4 py-3.5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)]">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Avg Convert Rate</p>
-                    <p className="mt-1.5 text-[24px] font-semibold leading-none tracking-tight text-slate-900 tabular-nums md:text-[30px]">
+                    <p className="mt-1.5 overflow-hidden text-ellipsis whitespace-nowrap text-[24px] font-semibold leading-none tracking-tight text-slate-900 tabular-nums lg:text-[28px] xl:text-[30px]">
                       {summary.avgConvertRate.toFixed(4)}
                     </p>
                     <div className="mt-2">
@@ -608,19 +637,27 @@ export default function InvoicesPayments() {
                           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                             Invoice Date Range
                           </p>
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-2">
                             <Input
-                              type="date"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="dd/mm/yy"
                               value={invoiceDateFrom}
-                              onChange={(event) => setInvoiceDateFrom(event.target.value)}
-                              className="h-10 rounded-2xl border-border/70 bg-background/90 text-sm focus-visible:ring-1 focus-visible:ring-slate-300"
+                              onChange={(event) =>
+                                setInvoiceDateFrom(event.target.value.replace(/[^\d/]/g, "").slice(0, 10))
+                              }
+                              className="h-10 min-w-0 rounded-2xl border-border/70 bg-background/90 text-sm focus-visible:ring-1 focus-visible:ring-slate-300"
                               aria-label="Invoice date from"
                             />
                             <Input
-                              type="date"
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="dd/mm/yy"
                               value={invoiceDateTo}
-                              onChange={(event) => setInvoiceDateTo(event.target.value)}
-                              className="h-10 rounded-2xl border-border/70 bg-background/90 text-sm focus-visible:ring-1 focus-visible:ring-slate-300"
+                              onChange={(event) =>
+                                setInvoiceDateTo(event.target.value.replace(/[^\d/]/g, "").slice(0, 10))
+                              }
+                              className="h-10 min-w-0 rounded-2xl border-border/70 bg-background/90 text-sm focus-visible:ring-1 focus-visible:ring-slate-300"
                               aria-label="Invoice date to"
                             />
                           </div>
