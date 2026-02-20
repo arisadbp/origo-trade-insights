@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, ChevronRight, RotateCcw, ArrowUpDown, Bookmark, BookmarkCheck, MoreHorizontal } from "lucide-react";
+import { Search, ChevronRight, RotateCcw, ArrowUpDown, Bookmark, BookmarkCheck, MoreHorizontal, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,8 @@ import { cn } from "@/lib/utils";
 import { getFlagEmoji } from "@/lib/flags";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { loadProductRequests } from "@/lib/yourProductData";
 import type { Company, Country, HsCode, TradeHistoryRow } from "@/data/market-intelligence/types";
 import {
   getAvailableMonthsFromDataset,
@@ -92,6 +94,12 @@ type ReplacementRequestEntry = {
   requestedAt: string;
 };
 
+type ReadyProductScopeOption = {
+  id: string;
+  name: string;
+  hsCode: string;
+};
+
 const MARKET_TAB_STORAGE_KEY = "market-intelligence-active-tab";
 const MARKET_FOCUS_IDS_STORAGE_PREFIX = "market-intelligence-focus-company-ids";
 const MARKET_FOCUS_MODE_STORAGE_PREFIX = "market-intelligence-focus-mode";
@@ -135,6 +143,7 @@ function CustomerTypeCell({ value }: { value?: string | null }) {
 export default function MarketIntelligence() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { email } = useAuth();
   const [activeTab, setActiveTab] = useState<MarketSectionTab>(() => {
     if (typeof window === "undefined") return "market-insights";
     const stored = window.sessionStorage.getItem(MARKET_TAB_STORAGE_KEY);
@@ -178,6 +187,7 @@ export default function MarketIntelligence() {
   const [isCompanyDataLoading, setIsCompanyDataLoading] = useState(false);
   const [companyDataSource, setCompanyDataSource] = useState<CompanyListDataset | null>(null);
   const [companyDataError, setCompanyDataError] = useState<string | null>(null);
+  const [readyScopeProducts, setReadyScopeProducts] = useState<ReadyProductScopeOption[]>([]);
 
   const focusIdsStorageKey = useMemo(
     () => `${MARKET_FOCUS_IDS_STORAGE_PREFIX}:${selectedHsCode.code || "__default__"}`,
@@ -229,23 +239,91 @@ export default function MarketIntelligence() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setReadyScopeProducts([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    const loadReadyProducts = async () => {
+      try {
+        const requestResult = await loadProductRequests();
+        if (!active) return;
+        const rows = requestResult.rows
+          .filter(
+            (row) =>
+              row.customer_email.trim().toLowerCase() === normalizedEmail &&
+              (row.status === "READY" || row.status === "UNLOCKED"),
+          )
+          .map((row) => ({
+            id: row.id,
+            name: row.product_name,
+            hsCode: (row.hs_code ?? "").trim(),
+          }))
+          .filter((row) => row.name.trim().length > 0 && row.hsCode.length > 0)
+          .filter(
+            (row, index, array) =>
+              array.findIndex(
+                (item) =>
+                  item.name.trim().toUpperCase() === row.name.trim().toUpperCase() &&
+                  item.hsCode === row.hsCode,
+              ) === index,
+          );
+        setReadyScopeProducts(rows);
+      } catch {
+        if (active) setReadyScopeProducts([]);
+      }
+    };
+
+    void loadReadyProducts();
+    return () => {
+      active = false;
+    };
+  }, [email]);
+
   const hsCodeOptions = useMemo(
     () => (companyDataSource ? getHsCodesFromDataset(companyDataSource) : []),
     [companyDataSource],
   );
 
+  const effectiveHsCodeOptions = useMemo(() => {
+    const byCode = new Map(hsCodeOptions.map((row) => [row.code, row]));
+    readyScopeProducts.forEach((row) => {
+      const existing = byCode.get(row.hsCode);
+      if (existing) {
+        byCode.set(row.hsCode, {
+          ...existing,
+          product: row.name,
+        });
+        return;
+      }
+      byCode.set(row.hsCode, {
+        code: row.hsCode,
+        product: row.name,
+        description: "From YOUR Product (READY)",
+        category: `HS ${row.hsCode.slice(0, 2)}`,
+        chapter: row.hsCode.slice(0, 2),
+      });
+    });
+    return Array.from(byCode.values()).sort((a, b) => a.code.localeCompare(b.code));
+  }, [hsCodeOptions, readyScopeProducts]);
+
   useEffect(() => {
-    if (!hsCodeOptions.length) {
+    if (!effectiveHsCodeOptions.length) {
       if (selectedHsCode.code) {
         setSelectedHsCode(EMPTY_HS_CODE);
       }
       return;
     }
-    const hasSelected = hsCodeOptions.some((option) => option.code === selectedHsCode.code);
+    const hasSelected = effectiveHsCodeOptions.some((option) => option.code === selectedHsCode.code);
     if (!hasSelected) {
-      setSelectedHsCode(hsCodeOptions[0]);
+      setSelectedHsCode(effectiveHsCodeOptions[0]);
     }
-  }, [hsCodeOptions, selectedHsCode.code]);
+  }, [effectiveHsCodeOptions, selectedHsCode.code]);
 
   const dbAvailableMonths = useMemo(
     () =>
@@ -1034,6 +1112,11 @@ export default function MarketIntelligence() {
     return orderedKeys.map((key) => companyColumnMap[key]);
   }, [companyColumnMap, companyColumnOrder]);
 
+  const isCaneSugarSelected = useMemo(
+    () => selectedHsCode.product.trim().toLowerCase().includes("cane sugar"),
+    [selectedHsCode.product],
+  );
+
   return (
     <div className="flex flex-col h-full">
       <TopBar
@@ -1041,7 +1124,7 @@ export default function MarketIntelligence() {
         subtitle="Explore global trade data and market opportunities"
       />
 
-      <div className="flex-1 overflow-auto p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-5 md:pb-6">
+      <div className="relative flex-1 overflow-auto p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-5 md:pb-6">
         <div className="mx-auto w-full max-w-7xl">
           <div className="overflow-x-auto pb-1">
             <div className="inline-flex min-w-full rounded-2xl border border-border/70 bg-card/80 p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.05)] backdrop-blur">
@@ -1088,20 +1171,20 @@ export default function MarketIntelligence() {
                   <Select
                     value={selectedHsCode.code}
                     onValueChange={(value) => {
-                      const hs = hsCodeOptions.find((item) => item.code === value);
+                      const hs = effectiveHsCodeOptions.find((item) => item.code === value);
                       if (hs) {
                         setSelectedHsCode(hs);
                       }
                     }}
-                    disabled={hsCodeOptions.length === 0}
+                    disabled={effectiveHsCodeOptions.length === 0}
                   >
                     <SelectTrigger className="h-10 w-full rounded-2xl border-border/70 bg-background/90 px-3.5 text-sm focus:ring-1 focus:ring-slate-300">
                       <SelectValue>
-                        {hsCodeOptions.length > 0 ? selectedHsCode.product : "No product data"}
+                        {effectiveHsCodeOptions.length > 0 ? selectedHsCode.product : "No product data"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent className="bg-popover">
-                      {hsCodeOptions.map((hs) => (
+                      {effectiveHsCodeOptions.map((hs) => (
                         <SelectItem key={hs.code} value={hs.code}>
                           <div className="min-w-0">
                             <p className="truncate font-medium">{hs.product}</p>
@@ -1122,18 +1205,20 @@ export default function MarketIntelligence() {
               </div>
             </section>
 
-            {companyDataError && !isCompanyDataLoading && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                {companyDataError}
-              </div>
-            )}
-            {!companyDataError && !isCompanyDataLoading && hsCodeOptions.length === 0 && (
-              <div className="rounded-2xl border border-dashed border-border/70 bg-card/90 px-4 py-3 text-sm text-muted-foreground">
-                No HS code data found in Supabase.
-              </div>
-            )}
+            <div className="relative">
+              <div className={cn("space-y-5", isCaneSugarSelected && "pointer-events-none blur-[2px]")}>
+                {companyDataError && !isCompanyDataLoading && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    {companyDataError}
+                  </div>
+                )}
+                {!companyDataError && !isCompanyDataLoading && effectiveHsCodeOptions.length === 0 && (
+                  <div className="rounded-2xl border border-dashed border-border/70 bg-card/90 px-4 py-3 text-sm text-muted-foreground">
+                    No HS code data found in Supabase.
+                  </div>
+                )}
 
-            <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/90 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur">
+                <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/90 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur">
               <div className="border-b border-border/70 px-4 py-4 md:px-5">
                 <h2 className="text-base font-semibold text-foreground">Global Import Volume</h2>
                 <p className="text-sm text-muted-foreground">Country-level distribution with customer counts</p>
@@ -1200,12 +1285,12 @@ export default function MarketIntelligence() {
                   )}
                 </div>
               </section>
-            </section>
+                </section>
 
-            <section
-              ref={tableRef}
-              className="overflow-hidden rounded-2xl border border-border/60 bg-card/90 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur"
-            >
+                <section
+                  ref={tableRef}
+                  className="overflow-hidden rounded-2xl border border-border/60 bg-card/90 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur"
+                >
               <div className="border-b border-border/70 px-4 py-4 md:px-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                   <div className="space-y-1">
@@ -1557,7 +1642,19 @@ export default function MarketIntelligence() {
                   </div>
                 )}
               </div>
-            </section>
+                </section>
+              </div>
+
+              {isCaneSugarSelected ? (
+                <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-slate-900/10 backdrop-blur-sm">
+                  <div className="space-y-2 rounded-2xl border border-slate-200/90 bg-white/90 px-5 py-4 text-center shadow-[0_18px_45px_-26px_rgba(15,23,42,0.45)]">
+                    <Lock className="mx-auto h-10 w-10 text-slate-700" />
+                    <p className="text-sm font-medium text-slate-700">Locked for Cane Sugar</p>
+                    <p className="text-xs text-slate-500">Change Product to Refined Sugar in Market Scope.</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </div>

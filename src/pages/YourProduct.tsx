@@ -45,6 +45,8 @@ const getStatusIcon = (status: ProductRequestStatus) => {
   return null;
 };
 
+const isReadyRequest = (status: ProductRequestStatus) => status === "READY" || status === "UNLOCKED";
+
 const formatDateTime = (value: string) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -169,9 +171,25 @@ export default function YourProduct() {
     [customerRequests, selectedRequestId],
   );
 
+  const galleryRequests = useMemo(
+    () =>
+      customerRequests
+        .filter((row) => isReadyRequest(row.status))
+        .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at)),
+    [customerRequests],
+  );
+
+  const activeRequests = useMemo(
+    () =>
+      customerRequests
+        .filter((row) => !isReadyRequest(row.status))
+        .sort((a, b) => b.submitted_at.localeCompare(a.submitted_at)),
+    [customerRequests],
+  );
+
   const requestStats = useMemo(() => {
     const total = customerRequests.length;
-    const ready = customerRequests.filter((row) => row.status === "READY" || row.status === "UNLOCKED").length;
+    const ready = customerRequests.filter((row) => isReadyRequest(row.status)).length;
     const needInfo = customerRequests.filter((row) => row.status === "NEED_MORE_INFO").length;
     return { total, ready, needInfo };
   }, [customerRequests]);
@@ -386,6 +404,80 @@ export default function YourProduct() {
           </div>
         </section>
 
+        <section className="rounded-2xl border bg-card/90 backdrop-blur">
+          <div className="border-b border-border/70 px-4 py-4 md:px-5">
+            <h3 className="text-base font-semibold">Gallery View</h3>
+            <p className="text-sm text-muted-foreground">Ready and unlocked products only.</p>
+          </div>
+
+          {loading ? (
+            <div className="px-4 py-6 text-sm text-muted-foreground md:px-5">Loading products...</div>
+          ) : error ? (
+            <div className="px-4 py-6 text-sm text-destructive md:px-5">{error}</div>
+          ) : galleryRequests.length === 0 ? (
+            <div className="px-4 py-8 text-sm text-muted-foreground md:px-5">No ready products yet.</div>
+          ) : (
+            <div className="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3">
+              {galleryRequests.map((request) => {
+                const StatusIcon = getStatusIcon(request.status);
+                const isReady = isReadyRequest(request.status);
+                return (
+                  <article
+                    key={`gallery-${request.id}`}
+                    className={cn(
+                      "rounded-xl border border-border/70 bg-card px-3.5 py-3",
+                      isReady && "border-emerald-200 bg-emerald-50/30",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        {request.image_url ? (
+                          <img
+                            src={request.image_url}
+                            alt={request.product_name}
+                            className="h-14 w-14 shrink-0 rounded-lg border border-slate-200 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500">
+                            <FileSearch className="h-4 w-4" />
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">{request.product_name}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            HS {request.hs_code || "-"} · {formatDateTime(request.submitted_at)}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-500">{statusHintMap[request.status]}</p>
+                        </div>
+                      </div>
+                      <Badge className={cn("inline-flex h-8 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-semibold", STATUS_STYLE[request.status])}>
+                        {StatusIcon ? <StatusIcon className="h-4 w-4" /> : null}
+                        {statusLabelMap[request.status]}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 rounded-full"
+                        onClick={() => {
+                          setSelectedRequestId(request.id);
+                          setIsPreviewOpen(true);
+                        }}
+                      >
+                        <Eye className="mr-1.5 h-3.5 w-3.5" />
+                        View
+                      </Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         <div className="grid gap-5 xl:grid-cols-[minmax(0,440px)_minmax(0,1fr)]">
           <section className="rounded-2xl border bg-card/90 backdrop-blur">
             <div className="border-b border-border/70 px-4 py-4 md:px-5">
@@ -516,20 +608,20 @@ export default function YourProduct() {
           <section className="rounded-2xl border bg-card/90 backdrop-blur">
             <div className="border-b border-border/70 px-4 py-4 md:px-5">
               <h3 className="text-base font-semibold">Product Requests</h3>
-              <p className="text-sm text-muted-foreground">Open any request to view detail and opportunity preview.</p>
+              <p className="text-sm text-muted-foreground">Pending and in-review requests only.</p>
             </div>
 
             {loading ? (
               <div className="px-4 py-6 text-sm text-muted-foreground md:px-5">Loading product requests...</div>
             ) : error ? (
               <div className="px-4 py-6 text-sm text-destructive md:px-5">{error}</div>
-            ) : customerRequests.length === 0 ? (
+            ) : activeRequests.length === 0 ? (
               <div className="px-4 py-8 text-sm text-muted-foreground md:px-5">
-                No product requests yet. Submit your first product to start ORIGO review.
+                No pending product requests.
               </div>
             ) : (
               <div className="grid gap-3 p-3 md:p-4">
-                {customerRequests.map((request) => {
+                {activeRequests.map((request) => {
                   const isSelected = request.id === selectedRequestId;
                   const StatusIcon = getStatusIcon(request.status);
                   return (
