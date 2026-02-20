@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Eye, FileSearch, ImagePlus, UploadCloud } from "lucide-react";
+import { AlertCircle, CalendarDays, CheckCircle2, Clock3, Eye, FileSearch, ImagePlus, UploadCloud } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,13 @@ const STATUS_STYLE: Record<ProductRequestStatus, string> = {
   READY: "border-emerald-200 bg-emerald-50 text-emerald-700",
   UNLOCKED: "border-violet-200 bg-violet-50 text-violet-700",
   NOT_SUPPORTED: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+const getStatusIcon = (status: ProductRequestStatus) => {
+  if (status === "READY") return CheckCircle2;
+  if (status === "PENDING_REVIEW") return Clock3;
+  if (status === "NEED_MORE_INFO") return AlertCircle;
+  return null;
 };
 
 const formatDateTime = (value: string) => {
@@ -343,7 +350,7 @@ export default function YourProduct() {
     <div className="flex h-full flex-col">
       <TopBar
         title="YOUR Product"
-        subtitle="Historical proof (2023) and forward opportunity (2026) for submitted products"
+        subtitle="Manage submitted products and review status updates"
       />
 
       <div className="flex-1 space-y-5 overflow-auto p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-6 md:pb-6">
@@ -353,7 +360,7 @@ export default function YourProduct() {
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Product Intelligence</p>
               <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Submit, review, and unlock buyer opportunity</h2>
               <p className="mt-1 text-sm text-slate-600">
-                Submit product data once. ORIGO validates and returns proof (2023) + forward signal (2026).
+                Submit product data once.
               </p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center">
@@ -524,6 +531,7 @@ export default function YourProduct() {
               <div className="grid gap-3 p-3 md:p-4">
                 {customerRequests.map((request) => {
                   const isSelected = request.id === selectedRequestId;
+                  const StatusIcon = getStatusIcon(request.status);
                   return (
                     <article
                       key={request.id}
@@ -553,7 +561,8 @@ export default function YourProduct() {
                             <p className="mt-1 text-xs text-slate-500">{statusHintMap[request.status]}</p>
                           </div>
                         </div>
-                        <Badge className={cn("border whitespace-nowrap", STATUS_STYLE[request.status])}>
+                        <Badge className={cn("inline-flex h-8 items-center gap-1.5 whitespace-nowrap px-3 text-sm font-semibold", STATUS_STYLE[request.status])}>
+                          {StatusIcon ? <StatusIcon className="h-4 w-4" /> : null}
                           {statusLabelMap[request.status]}
                         </Badge>
                       </div>
@@ -586,19 +595,25 @@ export default function YourProduct() {
         <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-4xl">
           {selectedRequest ? (
             <div className="space-y-5">
-              <DialogHeader>
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <DialogTitle className="text-left text-lg">Opportunity Preview</DialogTitle>
-                    <DialogDescription>
-                      {selectedRequest.product_name} | {statusLabelMap[selectedRequest.status]}
-                    </DialogDescription>
-                  </div>
-                  <Badge className={cn("border", STATUS_STYLE[selectedRequest.status])}>
-                    {statusLabelMap[selectedRequest.status]}
-                  </Badge>
-                </div>
-              </DialogHeader>
+              {(() => {
+                const PreviewStatusIcon = getStatusIcon(selectedRequest.status);
+                return (
+                  <DialogHeader>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <DialogTitle className="text-left text-lg">Opportunity Preview</DialogTitle>
+                        <DialogDescription>
+                          {selectedRequest.product_name} | {statusLabelMap[selectedRequest.status]}
+                        </DialogDescription>
+                      </div>
+                      <Badge className={cn("inline-flex h-8 items-center gap-1.5 px-3 text-sm font-semibold", STATUS_STYLE[selectedRequest.status])}>
+                        {PreviewStatusIcon ? <PreviewStatusIcon className="h-4 w-4" /> : null}
+                        {statusLabelMap[selectedRequest.status]}
+                      </Badge>
+                    </div>
+                  </DialogHeader>
+                );
+              })()}
 
               {selectedRequest.customer_message ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-sm text-slate-600">

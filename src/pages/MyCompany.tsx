@@ -14,6 +14,7 @@ import {
   type DashboardInvoiceRow,
   type DashboardStockRow,
 } from "@/components/charts/ExecutiveTradeDashboard";
+import { useAuth } from "@/contexts/AuthContext";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type ContractRelation =
@@ -59,6 +60,14 @@ type DeliveryDbRow = {
   job: string | null;
   delivery_date: string | null;
   quantity: number | null;
+};
+
+type YourProductDbRow = {
+  id: string | null;
+  customer_email: string | null;
+  product_name: string | null;
+  status: string | null;
+  updated_at: string | null;
 };
 
 type ContractMetricRow = DashboardContractRow & {
@@ -149,11 +158,13 @@ const statusBadge = (status: string) => {
 
 export default function MyCompany() {
   const navigate = useNavigate();
+  const { email } = useAuth();
 
   const [contractRows, setContractRows] = useState<ContractMetricRow[]>([]);
   const [stockRows, setStockRows] = useState<DashboardStockRow[]>([]);
   const [invoiceRows, setInvoiceRows] = useState<DashboardInvoiceRow[]>([]);
   const [deliveryRows, setDeliveryRows] = useState<DashboardDeliveryRow[]>([]);
+  const [yourProductRows, setYourProductRows] = useState<YourProductDbRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,7 +183,7 @@ export default function MyCompany() {
       setLoading(true);
       setError(null);
 
-      const [contractRes, stockRes, invoiceRes, deliveryRes] = await Promise.all([
+      const [contractRes, stockRes, invoiceRes, deliveryRes, yourProductRes] = await Promise.all([
         supabase
           .from("contract_lines")
           .select("line_id, contract_id, job, product, team, status, ton, acc, date_to, contracts(customer, type, contractdate)")
@@ -186,6 +197,10 @@ export default function MyCompany() {
           .from("deliveries")
           .select("delivery_id, contract_id, job, delivery_date, quantity")
           .order("delivery_date", { ascending: false }),
+        supabase
+          .from("your_product_requests")
+          .select("id, customer_email, product_name, status, updated_at")
+          .order("updated_at", { ascending: false }),
       ]);
 
       if (cancelled) return;
@@ -202,6 +217,7 @@ export default function MyCompany() {
         setStockRows([]);
         setInvoiceRows([]);
         setDeliveryRows([]);
+        setYourProductRows([]);
         setLoading(false);
         return;
       }
@@ -256,10 +272,26 @@ export default function MyCompany() {
         job: row.job,
       } satisfies DashboardDeliveryRow));
 
+      const mappedYourProducts = ((yourProductRes.data ?? []) as YourProductDbRow[])
+        .filter((row) => {
+          const rowEmail = (row.customer_email ?? "").trim().toLowerCase();
+          const currentEmail = (email ?? "").trim().toLowerCase();
+          if (!currentEmail) return true;
+          return rowEmail === currentEmail;
+        })
+        .map((row, index) => ({
+          id: row.id ?? `your-product-${index}`,
+          customer_email: row.customer_email,
+          product_name: row.product_name,
+          status: row.status,
+          updated_at: row.updated_at,
+        }));
+
       setContractRows(mappedContracts);
       setStockRows(mappedStocks);
       setInvoiceRows(mappedInvoices);
       setDeliveryRows(mappedDeliveries);
+      setYourProductRows(mappedYourProducts);
       setLoading(false);
     };
 
@@ -268,7 +300,7 @@ export default function MyCompany() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [email]);
 
   const totals = useMemo(() => {
     const totalCommitTon = contractRows.reduce((sum, row) => sum + row.ton, 0);
@@ -320,101 +352,58 @@ export default function MyCompany() {
       });
     }
 
-    const orderDueSoonRows = contractRows.filter((row) => {
-      if (!row.status.toLowerCase().includes("pending")) return false;
-      const dueMs = toDayMs(row.dateTo);
-      if (dueMs === null) return false;
-      const days = Math.floor((dueMs - nowMs) / dayMs);
-      return days >= 0 && days <= 3;
+    const yourProductNeedInfo = yourProductRows.filter(
+      (row) => (row.status ?? "").trim().toUpperCase() === "NEED_MORE_INFO",
+    );
+    const yourProductPending = yourProductRows.filter(
+      (row) => (row.status ?? "").trim().toUpperCase() === "PENDING_REVIEW",
+    );
+    const yourProductReady = yourProductRows.filter((row) => {
+      const status = (row.status ?? "").trim().toUpperCase();
+      return status === "READY" || status === "UNLOCKED";
     });
 
-    if (orderDueSoonRows.length > 0) {
-      const nearestDate = orderDueSoonRows
-        .map((row) => row.dateTo)
-        .filter(Boolean)
-        .sort((a, b) => (toDayMs(a) ?? Number.MAX_SAFE_INTEGER) - (toDayMs(b) ?? Number.MAX_SAFE_INTEGER))[0] ?? null;
-
-      items.push({
-        severity: "warning",
-        title: `${orderDueSoonRows.length} Orders & Shipments due in 3 days`,
-        description: `Nearest due date: ${formatDate(nearestDate)}`,
-        action: "Plan dispatch",
-        href: "/my-company/orders?attention=due-orders-3d",
-      });
-    }
-
-    const overdueInvoiceRows = invoiceRows.filter((row) => {
-      const normalized = row.statusType.toLowerCase();
-      if (normalized.includes("paid") || normalized.includes("cancel") || normalized.includes("void")) return false;
-      const dueMs = toDayMs(row.invoiceDate);
-      return dueMs !== null && dueMs < nowMs;
-    });
-
-    if (overdueInvoiceRows.length > 0) {
-      const oldestInvoiceDate = overdueInvoiceRows
-        .map((row) => row.invoiceDate)
-        .filter(Boolean)
-        .sort((a, b) => (toDayMs(a) ?? 0) - (toDayMs(b) ?? 0))[0] ?? null;
-
+    if (yourProductNeedInfo.length > 0) {
       items.push({
         severity: "urgent",
-        title: `${overdueInvoiceRows.length} Invoices & Payments overdue`,
-        description: `Earliest overdue date: ${formatDate(oldestInvoiceDate)}`,
-        action: "Open invoices",
-        href: "/my-company/invoices?attention=overdue-invoices",
+        title: `YOUR Product: ${yourProductNeedInfo.length} need more info`,
+        description: "Update product details and submit again for ORIGO review.",
+        action: "Open YOUR Product",
+        href: "/upload/your-product",
       });
     }
 
-    const invoiceDueSoonRows = invoiceRows.filter((row) => {
-      const normalized = row.statusType.toLowerCase();
-      if (normalized.includes("paid") || normalized.includes("cancel") || normalized.includes("void")) return false;
-      const dueMs = toDayMs(row.invoiceDate);
-      if (dueMs === null) return false;
-      const days = Math.floor((dueMs - nowMs) / dayMs);
-      return days >= 0 && days <= 3;
-    });
-
-    if (invoiceDueSoonRows.length > 0) {
-      const nearestInvoiceDate = invoiceDueSoonRows
-        .map((row) => row.invoiceDate)
-        .filter(Boolean)
-        .sort((a, b) => (toDayMs(a) ?? Number.MAX_SAFE_INTEGER) - (toDayMs(b) ?? Number.MAX_SAFE_INTEGER))[0] ?? null;
-
+    if (yourProductPending.length > 0) {
       items.push({
         severity: "warning",
-        title: `${invoiceDueSoonRows.length} Invoices & Payments due in 3 days`,
-        description: `Nearest due date: ${formatDate(nearestInvoiceDate)}. Send reminder now.`,
-        action: "Send reminder",
-        href: "/my-company/invoices?attention=due-invoices-3d",
+        title: `YOUR Product: ${yourProductPending.length} pending review`,
+        description: "ORIGO review is in progress.",
+        action: "Open YOUR Product",
+        href: "/upload/your-product",
       });
     }
 
-    const financeFollowUpRows = invoiceRows.filter((row) => {
-      const normalized = row.statusType.toLowerCase();
-      return normalized.includes("provisional") || normalized.includes("adjust");
-    });
-
-    if (financeFollowUpRows.length > 0) {
+    if (yourProductReady.length > 0) {
       items.push({
         severity: "watch",
-        title: `${financeFollowUpRows.length} invoices need follow-up`,
-        description: "Provisional and adjustment invoices should be monitored.",
-        action: "Review",
-        href: "/my-company/invoices?attention=follow-up-invoices",
+        title: `YOUR Product: ${yourProductReady.length} ready`,
+        description: "Opportunity preview is available.",
+        action: "Open YOUR Product",
+        href: "/upload/your-product",
       });
     }
 
     if (items.length === 0) {
       items.push({
         severity: "watch",
-        title: "No urgent issues detected",
-        description: "Live checks are running across orders, inventory, and invoices.",
+        title: "No alerts detected",
+        description: "No overdue orders or YOUR Product status alerts at this time.",
         action: "Monitor",
       });
     }
 
     return items;
-  }, [contractRows, invoiceRows]);
+  }, [contractRows, yourProductRows]);
 
   const recentCommitRows = useMemo<RecentCommitRow[]>(() => {
     return [...contractRows]
