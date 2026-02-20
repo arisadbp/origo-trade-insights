@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Database, Package2, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Factory, Package2, Search } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -228,7 +228,7 @@ export default function Inventory() {
                   {formatNumber(uniqueFactories.length)}
                 </p>
                 <div className="mt-2">
-                  <Database className="h-4 w-4 text-muted-foreground" />
+                  <Factory className="h-4 w-4 text-muted-foreground" />
                 </div>
               </div>
             </div>
