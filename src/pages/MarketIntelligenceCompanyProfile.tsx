@@ -1,6 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Building2, ExternalLink, Globe, Mail, MapPin, Phone, Sparkles, User } from "lucide-react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
+import {
+  Building2,
+  ExternalLink,
+  Facebook,
+  Globe,
+  Instagram,
+  Linkedin,
+  Mail,
+  MapPin,
+  MessageCircle,
+  Sparkles,
+  Twitter,
+  Youtube,
+} from "lucide-react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { TopBar } from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +21,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type CompanyOverviewRow = {
@@ -116,6 +132,7 @@ type SupplyChainRow = {
   id: string;
   company_id: string;
   exporter: string | null;
+  importer: string | null;
   trades_sum: number | null;
   trade_frequency_ratio: number | null;
   kg_weight: number | null;
@@ -213,6 +230,29 @@ const pickFirstText = (...values: Array<string | null | undefined>) => {
   return undefined;
 };
 
+const pickPreferredCompanyName = (...values: Array<string | null | undefined>) => {
+  const candidates = values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value));
+  if (candidates.length === 0) return undefined;
+
+  const score = (value: string) => {
+    const words = value.split(/\s+/).filter(Boolean).length;
+    const upper = value.toUpperCase();
+    const hasCorporateHint = /(CÔNG TY|COMPANY|LIMITED|LTD|CORP|CORPORATION|CO\.)/.test(upper);
+    const looksLikeShortAlias = value.length <= 12 && /^[A-Z0-9]+(?:[-/][A-Z0-9]+)+$/.test(value);
+
+    let points = 0;
+    if (value.length >= 18) points += 4;
+    if (words >= 3) points += 4;
+    if (hasCorporateHint) points += 3;
+    if (looksLikeShortAlias) points -= 6;
+    return points;
+  };
+
+  return [...new Set(candidates)].sort((a, b) => score(b) - score(a) || b.length - a.length)[0];
+};
+
 const normalizeKey = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const getCandidateValue = (row: GenericSupabaseRow, candidates: string[]) => {
@@ -307,6 +347,7 @@ const mapSupplyChainRow = (row: GenericSupabaseRow, fallbackCompanyId: string, i
     id: toTextOrNull(getCandidateValue(row, ["id", "supplychain_id", "line_id"])) ?? `supply-${company}-${index}`,
     company_id: company,
     exporter,
+    importer: toTextOrNull(getCandidateValue(row, ["importer", "buyer", "customer", "company_name"])),
     trades_sum: tradesSum,
     trade_frequency_ratio: tradeFrequencyRatio,
     kg_weight: kgWeight,
@@ -377,9 +418,9 @@ const mapCompanyContactRow = (row: GenericSupabaseRow, fallbackCompanyId: string
     position: toTextOrNull(getCandidateValue(row, ["position", "job_title", "title", "role", "designation"])),
     department: toTextOrNull(getCandidateValue(row, ["department", "team", "division", "function"])),
     employment_date: toTextOrNull(getCandidateValue(row, ["employment_date", "employment_year", "joined_at"])),
-    business_email: toTextOrNull(getCandidateValue(row, ["business_email", "email", "company_email", "work_email"])),
-    supplement_email_1: toTextOrNull(getCandidateValue(row, ["supplement_email_1", "email_1", "secondary_email"])),
-    supplement_email_2: toTextOrNull(getCandidateValue(row, ["supplement_email_2", "email_2", "alternate_email"])),
+    business_email: toTextOrNull(getCandidateValue(row, ["contact_email", "business_email", "email", "company_email", "work_email"])),
+    supplement_email_1: toTextOrNull(getCandidateValue(row, ["contact_email_1", "supplement_email_1", "email_1", "secondary_email"])),
+    supplement_email_2: toTextOrNull(getCandidateValue(row, ["contact_email_2", "supplement_email_2", "email_2", "alternate_email"])),
     social_media: toTextOrNull(getCandidateValue(row, ["social_media"])),
     tel: toTextOrNull(getCandidateValue(row, ["tel", "phone", "telephone", "mobile", "phone_number", "contact_number"])),
     fax: toTextOrNull(getCandidateValue(row, ["fax"])),
@@ -393,12 +434,57 @@ const mapCompanyContactRow = (row: GenericSupabaseRow, fallbackCompanyId: string
   };
 };
 
+const normalizeEmail = (value?: string | null) => value?.trim().toLowerCase() ?? "";
+
+type SocialLinkItem = {
+  href: string;
+  label: string;
+  Icon: ComponentType<{ className?: string }>;
+};
+
+const splitSocialTokens = (value?: string | null) =>
+  (value ?? "")
+    .split(/[\s,;|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const getSocialIconByUrl = (href: string): Pick<SocialLinkItem, "label" | "Icon"> => {
+  const lower = href.toLowerCase();
+  if (lower.includes("linkedin.com")) return { label: "LinkedIn", Icon: Linkedin };
+  if (lower.includes("instagram.com")) return { label: "Instagram", Icon: Instagram };
+  if (lower.includes("facebook.com")) return { label: "Facebook", Icon: Facebook };
+  if (lower.includes("twitter.com") || lower.includes("x.com")) return { label: "X", Icon: Twitter };
+  if (lower.includes("youtube.com") || lower.includes("youtu.be")) return { label: "YouTube", Icon: Youtube };
+  if (lower.includes("whatsapp.com") || lower.includes("wa.me") || lower.includes("line.me")) {
+    return { label: "Chat", Icon: MessageCircle };
+  }
+  return { label: "Link", Icon: Globe };
+};
+
+const hasContactIdentity = (row: CompanyContactRow) =>
+  Boolean(
+    pickFirstText(
+      row.name,
+      row.business_email,
+      row.supplement_email_1,
+      row.supplement_email_2,
+      row.tel,
+      row.whatsapp,
+      row.fax,
+      row.linkedin,
+      row.twitter,
+      row.instagram,
+      row.facebook,
+      row.social_media,
+    ),
+  );
+
 const mapCompanyEmailRow = (row: GenericSupabaseRow, fallbackCompanyId: string, index: number): CompanyEmailRow => {
   const company = toTextOrNull(getCandidateValue(row, ["company_id", "companyid"])) ?? fallbackCompanyId;
   return {
     id: toTextOrNull(getCandidateValue(row, ["id"])) ?? `company-email-${company}-${index}`,
     company_id: company,
-    email: toTextOrNull(getCandidateValue(row, ["email", "business_email"])),
+    email: toTextOrNull(getCandidateValue(row, ["email", "business_email", "contact_email", "work_email", "company_email"])),
     importance: toTextOrNull(getCandidateValue(row, ["importance", "priority"])),
     source_description: toTextOrNull(getCandidateValue(row, ["source_description", "description"])),
     source: toTextOrNull(getCandidateValue(row, ["source"])),
@@ -530,8 +616,10 @@ const SupplyChainFlowChart = ({
   exporters: SupplyChainFlowNode[];
   importers: SupplyChainFlowNode[];
 }) => {
+  const isMobile = useIsMobile();
   const [showExporter, setShowExporter] = useState(true);
   const [showImporter, setShowImporter] = useState(false);
+  const hasImporterData = importers.length > 0;
 
   const visibleExporters = showExporter ? exporters.slice(0, 10) : [];
   const visibleImporters = showImporter ? importers.slice(0, 10) : [];
@@ -541,15 +629,39 @@ const SupplyChainFlowChart = ({
   const flowTransform = getFlowTransform(showExporter, showImporter);
   const flowFocusLabel = getFlowFocusLabel(showExporter, showImporter);
   const showLeftLane = showExporter;
-  const showRightLane = showImporter;
-  const centerNameLines = getTextLines(companyName, 24, 3);
-  const rowGap = 32;
+  const showRightLane = showImporter && hasImporterData;
+  const rowGap = isMobile ? 36 : 32;
   const maxRows = Math.max(visibleExporters.length, visibleImporters.length, 3);
-  const svgHeight = maxRows * rowGap + 120;
-  const centerWidth = 300;
-  const centerHeight = Math.max(154, Math.min(220, maxRows * 24));
-  const centerX = 500 - centerWidth / 2;
+  const svgHeight = maxRows * rowGap + (isMobile ? 104 : 120);
+  const viewWidth = isMobile ? 420 : 1000;
+  const centerWidth = isMobile ? 168 : 300;
+  const centerHeight = Math.max(isMobile ? 122 : 154, Math.min(isMobile ? 176 : 220, maxRows * (isMobile ? 20 : 24)));
+  const centerX = viewWidth / 2 - centerWidth / 2;
   const centerY = (svgHeight - centerHeight) / 2;
+  const centerNameLines = getTextLines(companyName, isMobile ? 14 : 24, isMobile ? 4 : 3);
+  const laneInset = isMobile ? 10 : 18;
+  const laneWidth = Math.max(0, centerX - laneInset * 2);
+  const leftNodeOffset = isMobile ? 24 : 104;
+  const leftNodeX = centerX - leftNodeOffset;
+  const rightNodeX = centerX + centerWidth + leftNodeOffset;
+  const leftTextX = leftNodeX - (isMobile ? 8 : 12);
+  const rightTextX = rightNodeX + (isMobile ? 8 : 9);
+  const leftControl1X = leftNodeX + (isMobile ? 8 : 70);
+  const leftControl2X = centerX - (isMobile ? 6 : 18);
+  const rightControl1X = centerX + centerWidth + (isMobile ? 6 : 18);
+  const rightControl2X = rightNodeX - (isMobile ? 8 : 70);
+  const textClipPadding = isMobile ? 10 : 90;
+  const clipWidth = Math.max(isMobile ? 82 : 160, centerX - laneInset * 2 - textClipPadding);
+  const leftClipX = laneInset - 2;
+  const rightClipX = viewWidth - clipWidth - (laneInset - 2);
+  const centerNameLineGap = isMobile ? 14 : 19;
+  const centerPrimaryFontSize = isMobile ? 12.5 : 17;
+  const centerSecondaryFontSize = isMobile ? 11.5 : 16;
+  const nodeLabelFontSize = isMobile ? 9.4 : 12.5;
+  const nodeValueFontSize = isMobile ? 8.4 : 10.5;
+  const noDataFontSize = isMobile ? 12.5 : 16;
+  const leftLaneCenterX = laneInset + laneWidth / 2;
+  const rightLaneCenterX = centerX + centerWidth + laneInset + laneWidth / 2;
 
   const getNodeY = (index: number, total: number) => {
     if (total <= 1) return svgHeight / 2;
@@ -564,10 +676,10 @@ const SupplyChainFlowChart = ({
     return start + ((end - start) * index) / (total - 1);
   };
 
-  const trimName = (value: string, max = 24) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
+  const trimName = (value: string, max = isMobile ? 15 : 24) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/60 bg-card p-4 sm:p-5">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">{flowFocusLabel}</p>
         <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/20 p-1">
@@ -600,14 +712,19 @@ const SupplyChainFlowChart = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-3 items-center text-center text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+      <div
+        className={cn(
+          "grid grid-cols-3 items-center text-center font-medium uppercase text-muted-foreground",
+          isMobile ? "text-[9px] tracking-[0.08em]" : "text-[10px] tracking-[0.14em]",
+        )}
+      >
         <span>{showExporter ? "Exporters" : ""}</span>
         <span className="truncate px-3">Company</span>
         <span>{showImporter ? "Importers" : ""}</span>
       </div>
 
-      <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-white">
-        <svg viewBox={`0 0 1000 ${svgHeight}`} className="h-auto w-full" preserveAspectRatio="xMidYMid meet">
+      <div className="relative overflow-hidden rounded-xl border border-border/40 bg-white">
+        <svg viewBox={`0 0 ${viewWidth} ${svgHeight}`} className="h-auto w-full" preserveAspectRatio="xMidYMid meet">
           <defs>
             <linearGradient id="flow-left-lane" x1="0%" y1="0%" x2="100%" y2="0%">
               <stop offset="0%" stopColor={flowPalette.laneLeft} />
@@ -626,10 +743,10 @@ const SupplyChainFlowChart = ({
               <stop offset="100%" stopColor={flowPalette.importerStroke} />
             </linearGradient>
             <clipPath id="flow-left-text-clip">
-              <rect x={16} y={16} width={224} height={svgHeight - 32} />
+              <rect x={leftClipX} y={16} width={clipWidth} height={svgHeight - 32} />
             </clipPath>
             <clipPath id="flow-right-text-clip">
-              <rect x={760} y={16} width={224} height={svgHeight - 32} />
+              <rect x={rightClipX} y={16} width={clipWidth} height={svgHeight - 32} />
             </clipPath>
             <filter id="flow-soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
               <feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="rgba(15,23,42,0.12)" />
@@ -660,11 +777,23 @@ const SupplyChainFlowChart = ({
             </style>
           </defs>
 
-          <rect x={0} y={0} width={1000} height={svgHeight} fill={flowPalette.bg} />
-          {showLeftLane && <rect x={18} y={16} width={314} height={svgHeight - 32} rx={24} fill="url(#flow-left-lane)" />}
-          {showRightLane && <rect x={668} y={16} width={314} height={svgHeight - 32} rx={24} fill="url(#flow-right-lane)" />}
+          <rect x={0} y={0} width={viewWidth} height={svgHeight} fill={flowPalette.bg} />
+          {showLeftLane && <rect x={laneInset} y={16} width={laneWidth} height={svgHeight - 32} rx={24} fill="url(#flow-left-lane)" />}
+          {showRightLane && (
+            <rect
+              x={centerX + centerWidth + laneInset}
+              y={16}
+              width={laneWidth}
+              height={svgHeight - 32}
+              rx={24}
+              fill="url(#flow-right-lane)"
+            />
+          )}
 
-          <g style={{ transform: flowTransform, transformOrigin: "500px 50%" }} className="origin-center transition-transform duration-500 ease-out">
+          <g
+            style={{ transform: flowTransform, transformOrigin: `${viewWidth / 2}px 50%` }}
+            className="origin-center transition-transform duration-500 ease-out"
+          >
             {showExporter && (
               <rect x={centerX - 1} y={centerY + 20} width={4} height={centerHeight - 40} fill={flowPalette.exporterRail} rx={4} />
             )}
@@ -675,10 +804,16 @@ const SupplyChainFlowChart = ({
             {centerNameLines.map((line, index) => (
               <text
                 key={`${line}-${index}`}
-                x={500}
-                y={centerY + centerHeight / 2 - ((centerNameLines.length - 1) * 19) / 2 + index * 19 + 2}
+                x={viewWidth / 2}
+                y={
+                  centerY +
+                  centerHeight / 2 -
+                  ((centerNameLines.length - 1) * centerNameLineGap) / 2 +
+                  index * centerNameLineGap +
+                  2
+                }
                 textAnchor="middle"
-                fontSize={index === 0 ? 17 : 16}
+                fontSize={index === 0 ? centerPrimaryFontSize : centerSecondaryFontSize}
                 fontWeight={600}
                 fill={flowPalette.text}
               >
@@ -687,13 +822,19 @@ const SupplyChainFlowChart = ({
             ))}
 
             {showExporter && visibleExporters.length === 0 && (
-              <text x={167} y={svgHeight / 2 + 4} textAnchor="middle" fontSize={16} fill={flowPalette.muted}>
+              <text x={leftLaneCenterX} y={svgHeight / 2 + 4} textAnchor="middle" fontSize={noDataFontSize} fill={flowPalette.muted}>
                 No exporter data
               </text>
             )}
 
-            {showImporter && visibleImporters.length === 0 && (
-              <text x={833} y={svgHeight / 2 + 4} textAnchor="middle" fontSize={16} fill={flowPalette.muted}>
+            {showImporter && !hasImporterData && (
+              <text x={rightLaneCenterX} y={svgHeight / 2 + 4} textAnchor="middle" fontSize={noDataFontSize} fill={flowPalette.muted}>
+                No Data
+              </text>
+            )}
+
+            {showImporter && hasImporterData && visibleImporters.length === 0 && (
+              <text x={rightLaneCenterX} y={svgHeight / 2 + 4} textAnchor="middle" fontSize={noDataFontSize} fill={flowPalette.muted}>
                 No importer data
               </text>
             )}
@@ -703,7 +844,7 @@ const SupplyChainFlowChart = ({
               const anchorY = getAnchorY(index, visibleExporters.length);
               const ratio = node.value / maxExporterValue;
               const strokeWidth = 1.4 + ratio * 4.2;
-              const path = `M 246 ${nodeY} C 316 ${nodeY}, 332 ${anchorY}, ${centerX} ${anchorY}`;
+              const path = `M ${leftNodeX} ${nodeY} C ${leftControl1X} ${nodeY}, ${leftControl2X} ${anchorY}, ${centerX} ${anchorY}`;
               return (
                 <g key={`exporter-${node.name}-${index}`}>
                   <path
@@ -723,12 +864,12 @@ const SupplyChainFlowChart = ({
                     className="flow-exporter-core"
                     style={{ ["--core-width" as string]: `${strokeWidth}px` }}
                   />
-                  <circle cx={246} cy={nodeY} r={2.9} fill={flowPalette.exporterRail} />
+                  <circle cx={leftNodeX} cy={nodeY} r={isMobile ? 2.4 : 2.9} fill={flowPalette.exporterRail} />
                   <text
-                    x={234}
+                    x={leftTextX}
                     y={nodeY + 4}
                     textAnchor="end"
-                    fontSize={12.5}
+                    fontSize={nodeLabelFontSize}
                     fill={flowPalette.text}
                     fontWeight={500}
                     clipPath="url(#flow-left-text-clip)"
@@ -736,10 +877,10 @@ const SupplyChainFlowChart = ({
                     {trimName(node.name)}
                   </text>
                   <text
-                    x={234}
-                    y={nodeY + 19}
+                    x={leftTextX}
+                    y={nodeY + (isMobile ? 14 : 19)}
                     textAnchor="end"
-                    fontSize={10.5}
+                    fontSize={nodeValueFontSize}
                     fill={flowPalette.subText}
                     clipPath="url(#flow-left-text-clip)"
                   >
@@ -754,7 +895,7 @@ const SupplyChainFlowChart = ({
               const anchorY = getAnchorY(index, visibleImporters.length);
               const ratio = node.value / maxImporterValue;
               const strokeWidth = 1.4 + ratio * 4.2;
-              const path = `M ${centerX + centerWidth} ${anchorY} C 668 ${anchorY}, 684 ${nodeY}, 754 ${nodeY}`;
+              const path = `M ${centerX + centerWidth} ${anchorY} C ${rightControl1X} ${anchorY}, ${rightControl2X} ${nodeY}, ${rightNodeX} ${nodeY}`;
               return (
                 <g key={`importer-${node.name}-${index}`}>
                   <path
@@ -774,12 +915,12 @@ const SupplyChainFlowChart = ({
                     className="flow-importer-core"
                     style={{ ["--core-width" as string]: `${strokeWidth}px` }}
                   />
-                  <circle cx={754} cy={nodeY} r={2.6} fill={flowPalette.importerRail} />
+                  <circle cx={rightNodeX} cy={nodeY} r={isMobile ? 2.2 : 2.6} fill={flowPalette.importerRail} />
                   <text
-                    x={763}
+                    x={rightTextX}
                     y={nodeY + 4}
                     textAnchor="start"
-                    fontSize={12.5}
+                    fontSize={nodeLabelFontSize}
                     fill={flowPalette.text}
                     fontWeight={500}
                     clipPath="url(#flow-right-text-clip)"
@@ -787,10 +928,10 @@ const SupplyChainFlowChart = ({
                     {trimName(node.name)}
                   </text>
                   <text
-                    x={763}
-                    y={nodeY + 18}
+                    x={rightTextX}
+                    y={nodeY + (isMobile ? 14 : 18)}
                     textAnchor="start"
-                    fontSize={10.5}
+                    fontSize={nodeValueFontSize}
                     fill={flowPalette.subText}
                     clipPath="url(#flow-right-text-clip)"
                   >
@@ -814,7 +955,6 @@ const tabTriggerClass =
   "rounded-lg border border-transparent px-3.5 py-2 text-sm font-medium text-muted-foreground transition hover:text-foreground data-[state=active]:border-[#ffbd59] data-[state=active]:bg-[#ffbd59] data-[state=active]:text-[#3b2a06]";
 
 export default function MarketIntelligenceCompanyProfile() {
-  const navigate = useNavigate();
   const { companyId = "" } = useParams();
   const [searchParams] = useSearchParams();
   const hsCode = searchParams.get("hs");
@@ -825,9 +965,12 @@ export default function MarketIntelligenceCompanyProfile() {
   const [overview, setOverview] = useState<CompanyOverviewRow | null>(null);
   const [basicInfo, setBasicInfo] = useState<CompanyBasicInfoRow | null>(null);
   const [contacts, setContacts] = useState<CompanyContactRow[]>([]);
+  const [companyContactRows, setCompanyContactRows] = useState<CompanyContactRow[]>([]);
   const [companyEmails, setCompanyEmails] = useState<CompanyEmailRow[]>([]);
   const [purchaseTrend, setPurchaseTrend] = useState<PurchaseTrendRow[]>([]);
   const [supplyChainRows, setSupplyChainRows] = useState<SupplyChainRow[]>([]);
+  const [purchasePageSize, setPurchasePageSize] = useState(10);
+  const [purchaseCurrentPage, setPurchaseCurrentPage] = useState(1);
 
   useEffect(() => {
     let active = true;
@@ -985,25 +1128,71 @@ export default function MarketIntelligenceCompanyProfile() {
         };
 
         const fetchContacts = async () => {
-          const rawRows = await fetchOptionalListFromCandidates<GenericSupabaseRow>(
-            ["company_contract", "company_contacts", "company_contact", "customer_contacts", "customer_contact", "contacts", "contact", "customers"],
-            "created_at",
-            true,
-            200,
-          );
-          return rawRows.map((row, index) => mapCompanyContactRow(row, companyId, index));
-        };
-
-        const fetchCompanyEmails = async () => {
-          const rawRows = await fetchOptionalListFromCandidates<GenericSupabaseRow>(
-            ["company_emails", "company_email"],
+          const rawRows = await fetchOptionalList<GenericSupabaseRow>(
+            "company_contract",
             "created_at",
             true,
             300,
           );
-          return rawRows
-            .map((row, index) => mapCompanyEmailRow(row, companyId, index))
-            .filter((row) => Boolean(row.email));
+          const mapped = rawRows
+            .map((row, index) => mapCompanyContactRow(row, companyId, index))
+            .filter(hasContactIdentity);
+
+          // Contact Hub now keys each person by contact_email from Supabase.
+          const emailKeyed = mapped.filter((row) => Boolean(normalizeEmail(row.business_email)));
+          const deduped = new Map<string, CompanyContactRow>();
+          emailKeyed.forEach((row) => {
+            const emailKey = normalizeEmail(row.business_email);
+            if (!emailKey) return;
+            if (!deduped.has(emailKey)) {
+              deduped.set(emailKey, row);
+            }
+          });
+
+          return Array.from(deduped.values()).sort((a, b) =>
+            normalizeEmail(a.business_email).localeCompare(normalizeEmail(b.business_email)),
+          );
+        };
+
+        const fetchCompanyEmails = async () => {
+          const candidateTables = ["company_email", "company_emails", "company_contact", "company_contacts", "company_contract"];
+          for (const table of candidateTables) {
+            const rawRows = await fetchOptionalList<GenericSupabaseRow>(table, "created_at", true, 300);
+            if (rawRows.length === 0) continue;
+
+            return rawRows
+              .map((row, index) => {
+                const mapped = mapCompanyEmailRow(row, companyId, index);
+                return {
+                  ...mapped,
+                  source: mapped.source ?? table,
+                  source_description: mapped.source_description ?? table,
+                };
+              })
+              .filter((row) => Boolean(row.email));
+          }
+          return [] as CompanyEmailRow[];
+        };
+
+        const fetchCompanyContactRows = async () => {
+          const rawRows = await fetchOptionalList<GenericSupabaseRow>("company_contract", "created_at", true, 500);
+          const mapped = rawRows
+            .map((row, index) => mapCompanyContactRow(row, companyId, index))
+            .filter(hasContactIdentity);
+
+          const deduped = new Map<string, CompanyContactRow>();
+          mapped.forEach((row, index) => {
+            const key = [
+              normalizeEmail(row.business_email),
+              row.name?.trim().toLowerCase() ?? "",
+              row.position?.trim().toLowerCase() ?? "",
+              String(index),
+            ].join("|");
+            if (!deduped.has(key)) {
+              deduped.set(key, row);
+            }
+          });
+          return Array.from(deduped.values());
         };
 
         const fetchBasicInfo = async () =>
@@ -1012,11 +1201,12 @@ export default function MarketIntelligenceCompanyProfile() {
             (row) => mapCompanyInfoRow(row, companyId),
           );
 
-        const [companyMasterData, overviewData, basicData, contactsData, companyEmailsData, purchaseData, supplyChainData] = await Promise.all([
+        const [companyMasterData, overviewData, basicData, contactsData, companyContactRowsData, companyEmailsData, purchaseData, supplyChainData] = await Promise.all([
           fetchCompanyMaster(),
           fetchOptionalSingle<CompanyOverviewRow>("company_overview"),
           fetchBasicInfo(),
           fetchContacts(),
+          fetchCompanyContactRows(),
           fetchCompanyEmails(),
           fetchPurchaseHistory(),
           fetchSupplyChain(),
@@ -1040,6 +1230,7 @@ export default function MarketIntelligenceCompanyProfile() {
         setOverview(overviewData);
         setBasicInfo(basicData);
         setContacts(contactsData);
+        setCompanyContactRows(companyContactRowsData);
         setCompanyEmails(companyEmailsData);
         setPurchaseTrend(purchaseData);
         setSupplyChainRows(supplyChainData);
@@ -1063,16 +1254,16 @@ export default function MarketIntelligenceCompanyProfile() {
 
   const companyName = useMemo(
     () =>
-      pickFirstText(
+      pickPreferredCompanyName(
         basicInfo?.company_name,
-        basicInfo?.name_en,
         basicInfo?.name_standard,
-        companyMaster?.customer,
+        basicInfo?.name_en,
         companyMaster?.customer_name,
         purchaseTrend[0]?.importer,
-        overview?.company_id,
-        companyId,
-      ) ?? companyId,
+        companyMaster?.customer,
+      ) ??
+      pickFirstText(overview?.company_id, companyId) ??
+      companyId,
     [
       basicInfo?.company_name,
       basicInfo?.name_en,
@@ -1194,9 +1385,6 @@ export default function MarketIntelligenceCompanyProfile() {
   );
 
   const totalPurchaseRows = purchaseRowsForDisplay.length;
-  const totalPurchaseAmount = purchaseRowsForDisplay.reduce((sum, row) => sum + (row.total_price_usd ?? 0), 0);
-  const totalPurchaseQuantity = purchaseRowsForDisplay.reduce((sum, row) => sum + (row.quantity ?? 0), 0);
-  const totalPurchaseWeightKg = purchaseRowsForDisplay.reduce((sum, row) => sum + (row.weight_kg ?? 0), 0);
   const purchaseSuppliers = useMemo(
     () => new Set(purchaseRowsForDisplay.map((row) => row.exporter).filter(Boolean)).size,
     [purchaseRowsForDisplay],
@@ -1205,6 +1393,30 @@ export default function MarketIntelligenceCompanyProfile() {
     () => new Set(purchaseRowsForDisplay.map((row) => row.origin_country).filter(Boolean)).size,
     [purchaseRowsForDisplay],
   );
+  const purchaseDestinations = useMemo(
+    () => new Set(purchaseRowsForDisplay.map((row) => row.destination_country).filter(Boolean)).size,
+    [purchaseRowsForDisplay],
+  );
+  const purchaseProducts = useMemo(
+    () => new Set(purchaseRowsForDisplay.map((row) => row.product).filter(Boolean)).size,
+    [purchaseRowsForDisplay],
+  );
+  const latestPurchaseRecordDate = useMemo(() => {
+    return purchaseRowsForDisplay
+      .map((row) => row.date)
+      .filter((value): value is string => Boolean(value))
+      .sort((a, b) => (a > b ? -1 : 1))[0] ?? null;
+  }, [purchaseRowsForDisplay]);
+  const purchaseTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(totalPurchaseRows / purchasePageSize)),
+    [totalPurchaseRows, purchasePageSize],
+  );
+  const paginatedPurchaseRows = useMemo(() => {
+    const start = (purchaseCurrentPage - 1) * purchasePageSize;
+    return purchaseRowsForDisplay.slice(start, start + purchasePageSize);
+  }, [purchaseRowsForDisplay, purchaseCurrentPage, purchasePageSize]);
+  const purchasePageStart = totalPurchaseRows === 0 ? 0 : (purchaseCurrentPage - 1) * purchasePageSize + 1;
+  const purchasePageEnd = Math.min(purchaseCurrentPage * purchasePageSize, totalPurchaseRows);
   const supplyChainExporterFlowNodes = useMemo(() => {
     const grouped = new Map<string, number>();
     supplyChainRows.forEach((row) => {
@@ -1238,11 +1450,17 @@ export default function MarketIntelligenceCompanyProfile() {
     const grouped = new Map<string, number>();
     const companyNameNormalized = companyName.trim().toLowerCase();
 
-    purchaseRowsForDisplay.forEach((row) => {
+    supplyChainRows.forEach((row) => {
       const name = (row.importer ?? "").trim();
       if (!name) return;
       if (name.toLowerCase() === companyNameNormalized) return;
-      const value = row.quantity ?? row.weight_kg ?? row.total_price_usd ?? 0;
+      const value =
+        row.trades_sum ??
+        row.quantity ??
+        row.kg_weight ??
+        row.volume_mt ??
+        row.total_price_usd ??
+        0;
       grouped.set(name, (grouped.get(name) ?? 0) + value);
     });
 
@@ -1250,7 +1468,18 @@ export default function MarketIntelligenceCompanyProfile() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 10);
-  }, [companyName, purchaseRowsForDisplay]);
+  }, [companyName, supplyChainRows]);
+
+  useEffect(() => {
+    setPurchaseCurrentPage(1);
+  }, [hsCode, companyId, purchasePageSize, totalPurchaseRows]);
+
+  useEffect(() => {
+    if (purchaseCurrentPage > purchaseTotalPages) {
+      setPurchaseCurrentPage(purchaseTotalPages);
+    }
+  }, [purchaseCurrentPage, purchaseTotalPages]);
+
   const employeeSizeNarrative =
     typeof overview?.employee_size === "number"
       ? `The company has approximately ${formatNumber(overview.employee_size)} employees.`
@@ -1304,17 +1533,11 @@ export default function MarketIntelligenceCompanyProfile() {
   }, [basicInfo?.facebook, basicInfo?.instagram, basicInfo?.twitter, companyWebsiteUrl, contacts]);
 
   const companyEmailRows = useMemo(() => {
-    const merged = [
-      ...companyEmails.map((row) => ({
+    const merged = companyEmails
+      .map((row) => ({
         email: row.email?.trim() ?? "",
-        source: row.source_description ?? row.source ?? row.importance ?? null,
-      })),
-      ...contacts.flatMap((row) => [
-        { email: row.business_email?.trim() ?? "", source: "Contact person" as string | null },
-        { email: row.supplement_email_1?.trim() ?? "", source: "Contact person" as string | null },
-        { email: row.supplement_email_2?.trim() ?? "", source: "Contact person" as string | null },
-      ]),
-    ]
+        source: row.source_description ?? row.source ?? row.importance ?? "company_email",
+      }))
       .filter((row) => row.email)
       .filter((row) => /\S+@\S+\.\S+/.test(row.email));
 
@@ -1326,7 +1549,7 @@ export default function MarketIntelligenceCompanyProfile() {
       }
     });
     return Array.from(deduped.values());
-  }, [companyEmails, contacts]);
+  }, [companyEmails]);
 
   const companyContactChannels = useMemo(() => {
     const rawLinks = [
@@ -1349,6 +1572,24 @@ export default function MarketIntelligenceCompanyProfile() {
     return Array.from(deduped.values());
   }, [companyWebsiteUrl, contacts]);
 
+  const contactInformationRows = useMemo(
+    () =>
+      companyContactRows.filter((row) =>
+        Boolean(
+          pickFirstText(
+            row.name,
+            row.position,
+            row.department,
+            row.employment_date,
+            row.business_email,
+            row.social_media,
+            row.region,
+          ),
+        ),
+      ),
+    [companyContactRows],
+  );
+
   return (
     <div className="flex h-full flex-col">
       <TopBar
@@ -1357,22 +1598,6 @@ export default function MarketIntelligenceCompanyProfile() {
 
       <div className="flex-1 overflow-auto p-4 pb-[calc(6rem+env(safe-area-inset-bottom))] md:p-5 md:pb-6">
         <div className="mx-auto w-full max-w-7xl space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="group h-10 rounded-xl border-border/60 bg-background px-2.5 pr-3.5 shadow-none transition hover:bg-muted/40"
-              onClick={() => navigate("/market-intelligence")}
-              aria-label="Back to Market Intelligence"
-            >
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-slate-900 text-white">
-                <ArrowLeft className="h-3.5 w-3.5" />
-              </span>
-              <span className="ml-2 text-sm font-medium sm:hidden">Back</span>
-              <span className="ml-2 hidden text-sm font-medium sm:inline">Back to Market Intelligence</span>
-            </Button>
-          </div>
-
           {isLoading ? (
             <div className="space-y-4">
               <Skeleton className="h-44 w-full rounded-[26px]" />
@@ -1418,16 +1643,50 @@ export default function MarketIntelligenceCompanyProfile() {
                     <StatCard label="Purchase Frequency / Year" value={formatNumber(overview?.purchase_frequency_per_year)} />
                     <StatCard label="Latest Purchase" value={formatDate(overview?.latest_purchase_date || companyMaster?.latest_purchase_time)} />
                   </div>
+
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                      <p className="text-base font-semibold text-foreground">Contact</p>
+                      <div className="mt-2 space-y-0">
+                        <FieldRow label="Company name" value={companyName} />
+                        <FieldRow label="Location" value={companyLocation} />
+                        <FieldRow label="Website" value={companyWebsite} />
+                        <FieldRow label="Last profile update" value={formatDate(basicInfo?.updated_at || overview?.updated_at || companyMaster?.created_at)} />
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                      <p className="text-base font-semibold text-foreground">Digital Channels</p>
+                      <div className="mt-2">
+                        {socialLinks.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No website or social channels available.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {socialLinks.map((item) => (
+                              <a
+                                key={`${item.label}-${item.href}`}
+                                href={item.href}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background px-3 py-1.5 text-sm shadow-sm transition hover:bg-secondary"
+                              >
+                                <item.icon className="h-3.5 w-3.5" />
+                                {item.label}
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
               <Tabs defaultValue="overview" className="w-full">
                 <TabsList className="h-auto w-full justify-start gap-1.5 overflow-x-auto rounded-xl border border-border/60 bg-muted/30 p-1">
                   <TabsTrigger value="overview" className={tabTriggerClass}>Overview</TabsTrigger>
-                  <TabsTrigger value="company" className={tabTriggerClass}>Company Info</TabsTrigger>
-                  <TabsTrigger value="contacts" className={tabTriggerClass}>Contacts</TabsTrigger>
+                  <TabsTrigger value="company" className={tabTriggerClass}>Contact</TabsTrigger>
                   <TabsTrigger value="purchases" className={tabTriggerClass}>Purchase History</TabsTrigger>
-                  <TabsTrigger value="supply-chain" className={tabTriggerClass}>Supply Chain</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="mt-4 space-y-4">
@@ -1471,54 +1730,8 @@ export default function MarketIntelligenceCompanyProfile() {
 
                 <TabsContent value="company" className="mt-4 space-y-4">
                   <Card className={contentCardClass}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-xl tracking-tight sm:text-2xl">Company Information</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-0">
-                      <FieldRow label="Company name" value={companyName} />
-                      <FieldRow label="Location" value={companyLocation} />
-                      <FieldRow label="Website" value={companyWebsite} />
-                      <FieldRow label="Customer status" value={companyMaster?.status || companyMaster?.value_tag} />
-                      <FieldRow label="Last profile update" value={formatDate(basicInfo?.updated_at || overview?.updated_at || companyMaster?.created_at)} />
-                    </CardContent>
-                  </Card>
-
-                  <Card className={contentCardClass}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-xl tracking-tight sm:text-2xl">Digital Channels</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {socialLinks.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No website or social channels available.</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {socialLinks.map((item) => (
-                            <a
-                              key={`${item.label}-${item.href}`}
-                              href={item.href}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background px-3 py-1.5 text-sm shadow-sm transition hover:bg-secondary"
-                            >
-                              <item.icon className="h-3.5 w-3.5" />
-                              {item.label}
-                            </a>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="contacts" className="mt-4 space-y-4">
-                  <Card className={contentCardClass}>
                     <CardHeader className="pb-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <CardTitle className="text-xl tracking-tight sm:text-2xl">Contact Hub</CardTitle>
-                        <Badge variant="outline" className="rounded-full bg-background/80 px-3">
-                          Company + People
-                        </Badge>
-                      </div>
+                      <CardTitle className="text-xl tracking-tight sm:text-2xl">Contact Hub</CardTitle>
                       <p className="text-sm text-muted-foreground">
                         Company channels and key contact persons in one place.
                       </p>
@@ -1619,96 +1832,79 @@ export default function MarketIntelligenceCompanyProfile() {
                         )}
                       </div>
 
-                      {contacts.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No contact person records available.</p>
-                      ) : (
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {contacts.map((contact, index) => {
-                            const primaryEmail = contact.business_email || contact.supplement_email_1 || contact.supplement_email_2;
-                            const callablePhone = pickFirstText(contact.tel, contact.whatsapp);
-                            const phoneDisplay = callablePhone || pickFirstText(contact.social_media, contact.fax);
-                            const displayName =
-                              contact.name ||
-                              (primaryEmail ? primaryEmail.split("@")[0] : undefined) ||
-                              "Unknown contact";
-                            const socialActions = [
-                              { label: "LinkedIn", href: normalizeUrl(contact.linkedin) },
-                              { label: "Twitter", href: normalizeUrl(contact.twitter) },
-                              { label: "Instagram", href: normalizeUrl(contact.instagram) },
-                              { label: "Facebook", href: normalizeUrl(contact.facebook) },
-                            ].filter((item) => item.href);
+                      <div className="space-y-2">
+                        <p className="text-base font-semibold text-foreground">Contact Information</p>
+                        {contactInformationRows.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No contact records available.</p>
+                        ) : (
+                          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
+                            <Table>
+                              <TableHeader>
+                                <TableRow className="bg-muted/20">
+                                  <TableHead>Contact Name</TableHead>
+                                  <TableHead>Position</TableHead>
+                                  <TableHead>Department</TableHead>
+                                  <TableHead>Employment Date</TableHead>
+                                  <TableHead>Business Email</TableHead>
+                                  <TableHead>Social Media</TableHead>
+                                  <TableHead>Region</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {contactInformationRows.map((row, index) => {
+                                  const businessEmail = row.business_email?.trim() || "";
+                                  const socialMediaLinks = [...new Set(splitSocialTokens(row.social_media))]
+                                    .map((token) => normalizeUrl(token))
+                                    .filter((value): value is string => Boolean(value));
 
-                            return (
-                              <div
-                                key={contact.id ?? `${contact.company_id}-${contact.name ?? "contact"}-${index}`}
-                                className="rounded-2xl border border-border/60 bg-card p-4"
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="font-semibold text-foreground">{displayName}</p>
-                                    <p className="text-sm text-muted-foreground">{contact.position || "Position not available"}</p>
-                                  </div>
-                                  {contact.employment_date ? (
-                                    <Badge variant="secondary" className="rounded-full bg-muted px-2.5 py-1 text-xs">
-                                      Since {contact.employment_date}
-                                    </Badge>
-                                  ) : null}
-                                </div>
-
-                                <div className="mt-3 space-y-2 text-sm">
-                                  <div className="flex items-center gap-2 text-muted-foreground">
-                                    <User className="h-4 w-4" />
-                                    <span>{contact.department || "Department not available"}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-muted-foreground">
-                                    <Mail className="h-4 w-4" />
-                                    <span className="break-all">{primaryEmail || "No email"}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-muted-foreground">
-                                    <Phone className="h-4 w-4" />
-                                    <span>{phoneDisplay || "No phone/social info"}</span>
-                                  </div>
-                                </div>
-
-                                {(primaryEmail || callablePhone || socialActions.length > 0) && (
-                                  <div className="mt-4 flex flex-wrap gap-2">
-                                    {primaryEmail ? (
-                                      <a
-                                        href={`mailto:${primaryEmail}`}
-                                        className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2.5 py-1 text-xs text-foreground transition hover:bg-secondary"
-                                      >
-                                        <Mail className="h-3.5 w-3.5" />
-                                        Email
-                                      </a>
-                                    ) : null}
-                                    {callablePhone ? (
-                                      <a
-                                        href={`tel:${callablePhone}`}
-                                        className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2.5 py-1 text-xs text-foreground transition hover:bg-secondary"
-                                      >
-                                        <Phone className="h-3.5 w-3.5" />
-                                        Call
-                                      </a>
-                                    ) : null}
-                                    {socialActions.map((item) => (
-                                      <a
-                                        key={`${item.label}-${item.href}`}
-                                        href={item.href}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2.5 py-1 text-xs text-foreground transition hover:bg-secondary"
-                                      >
-                                        <Globe className="h-3.5 w-3.5" />
-                                        {item.label}
-                                      </a>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                                  return (
+                                    <TableRow key={`${row.id ?? row.business_email ?? row.name ?? "contact"}-${index}`}>
+                                      <TableCell className="font-medium">{row.name || "—"}</TableCell>
+                                      <TableCell>{row.position || "—"}</TableCell>
+                                      <TableCell>{row.department || "—"}</TableCell>
+                                      <TableCell>{row.employment_date || "—"}</TableCell>
+                                      <TableCell className="max-w-[240px] truncate" title={businessEmail || undefined}>
+                                        {businessEmail ? (
+                                          <a href={`mailto:${businessEmail}`} className="text-sm text-foreground hover:underline">
+                                            {businessEmail}
+                                          </a>
+                                        ) : (
+                                          "—"
+                                        )}
+                                      </TableCell>
+                                      <TableCell>
+                                        {socialMediaLinks.length > 0 ? (
+                                          <div className="flex items-center gap-1.5">
+                                            {socialMediaLinks.map((href) => {
+                                              const { label, Icon } = getSocialIconByUrl(href);
+                                              return (
+                                                <a
+                                                  key={`${row.id ?? index}-${href}`}
+                                                  href={href}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-background text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+                                                  aria-label={label}
+                                                  title={label}
+                                                >
+                                                  <Icon className="h-3.5 w-3.5" />
+                                                </a>
+                                              );
+                                            })}
+                                          </div>
+                                        ) : (
+                                          "—"
+                                        )}
+                                      </TableCell>
+                                      <TableCell>{row.region || "—"}</TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -1717,30 +1913,32 @@ export default function MarketIntelligenceCompanyProfile() {
                   <Card className={contentCardClass}>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-xl tracking-tight sm:text-2xl">Purchase History</CardTitle>
+                      <p className="text-sm text-muted-foreground">Purchase history for the past 12 months.</p>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                         <StatCard label="Records" value={formatNumber(totalPurchaseRows)} />
-                        <StatCard label="Total Amount" value={formatCurrency(totalPurchaseAmount)} />
-                        <StatCard
-                          label="Total Quantity"
-                          value={formatNumber(totalPurchaseQuantity)}
-                        />
-                        <StatCard
-                          label="Total Weight (KG)"
-                          value={formatNumber(totalPurchaseWeightKg)}
-                        />
-                      </div>
-                      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
                         <StatCard label="Suppliers" value={formatNumber(purchaseSuppliers)} />
                         <StatCard label="Origin Countries" value={formatNumber(purchaseOrigins)} />
+                        <StatCard label="Destination Markets" value={formatNumber(purchaseDestinations)} />
+                      </div>
+                      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                        <StatCard label="Product Types" value={formatNumber(purchaseProducts)} />
+                        <StatCard label="Latest Trade" value={formatDate(latestPurchaseRecordDate)} />
                         <StatCard
                           label="HS Filter"
                           value={hsCode ? hsCode.replace(/\D+/g, "").slice(0, 6) || "Applied" : "All"}
                         />
-                        <StatCard
-                          label="Data Source"
-                          value={purchaseTrend.length > 0 ? "company_history" : "overview fallback"}
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="mb-2">
+                          <p className="text-base font-semibold text-foreground">Supply Chain Flow</p>
+                        </div>
+                        <SupplyChainFlowChart
+                          companyName={companyName}
+                          exporters={supplyChainExporterFlowNodes}
+                          importers={supplyChainImporterFlowNodes}
                         />
                       </div>
 
@@ -1753,113 +1951,106 @@ export default function MarketIntelligenceCompanyProfile() {
                       {purchaseRowsForDisplay.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No purchase records available for this selection.</p>
                       ) : (
-                        <div className="overflow-x-auto rounded-2xl border border-border/60">
-                          <Table className="min-w-[1900px] text-sm">
-                            <TableHeader>
-                              <TableRow className="bg-muted/35 hover:bg-muted/35">
-                                <TableHead className="sticky left-0 z-20 w-[130px] min-w-[130px] bg-muted/35 font-semibold">
-                                  Date
-                                </TableHead>
-                                <TableHead className="w-[260px] min-w-[260px]">Importer</TableHead>
-                                <TableHead className="w-[260px] min-w-[260px]">Exporter</TableHead>
-                                <TableHead className="w-[120px] min-w-[120px]">HS Code</TableHead>
-                                <TableHead className="w-[180px] min-w-[180px]">Product</TableHead>
-                                <TableHead className="w-[280px] min-w-[280px]">Product Description</TableHead>
-                                <TableHead className="w-[140px] min-w-[140px]">Origin</TableHead>
-                                <TableHead className="w-[140px] min-w-[140px]">Destination</TableHead>
-                                <TableHead className="w-[130px] min-w-[130px] text-right">Quantity</TableHead>
-                                <TableHead className="w-[120px] min-w-[120px]">Unit</TableHead>
-                                <TableHead className="w-[140px] min-w-[140px] text-right">Weight (KG)</TableHead>
-                                <TableHead className="w-[155px] min-w-[155px] text-right">Unit Price / KG</TableHead>
-                                <TableHead className="w-[165px] min-w-[165px] text-right">Unit Price / Qty</TableHead>
-                                <TableHead className="w-[170px] min-w-[170px] text-right">Total Price (USD)</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {purchaseRowsForDisplay.map((row, index) => (
-                                <TableRow key={row.id ?? `${row.company_id}-${row.date ?? "na"}-${index}`} className="hover:bg-muted/25">
-                                  <TableCell className="sticky left-0 z-10 bg-card">{formatDate(row.date)}</TableCell>
-                                  <TableCell className="max-w-[260px] break-words">{row.importer ?? "—"}</TableCell>
-                                  <TableCell className="max-w-[260px] break-words">{row.exporter ?? "—"}</TableCell>
-                                  <TableCell>{row.hs_code ?? "—"}</TableCell>
-                                  <TableCell className="max-w-[180px] break-words">{row.product ?? "—"}</TableCell>
-                                  <TableCell className="max-w-[280px] break-words text-muted-foreground">{row.product_description ?? "—"}</TableCell>
-                                  <TableCell>{row.origin_country ?? "—"}</TableCell>
-                                  <TableCell>{row.destination_country ?? "—"}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatNumber(row.quantity)}</TableCell>
-                                  <TableCell>{row.quantity_unit ?? "—"}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatNumber(row.weight_kg)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatCurrency(row.unit_price_usd_kg)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatCurrency(row.unit_price_usd_qty)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatCurrency(row.total_price_usd)}</TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </TabsContent>
+                        <div className="space-y-3">
+                          <div className="flex flex-col gap-2 border-t border-border/50 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-xs font-medium text-slate-600">{formatNumber(totalPurchaseRows)} visible records</p>
+                            <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-2 py-1">
+                              <span className="text-[11px] font-medium text-muted-foreground">Per page</span>
+                              <Select
+                                value={String(purchasePageSize)}
+                                onValueChange={(value) => setPurchasePageSize(Number(value))}
+                              >
+                                <SelectTrigger className="h-7 w-[74px] rounded-full border-none bg-transparent px-2 text-xs shadow-none focus:ring-0">
+                                  <SelectValue placeholder="10" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="10">10</SelectItem>
+                                  <SelectItem value="20">20</SelectItem>
+                                  <SelectItem value="30">30</SelectItem>
+                                  <SelectItem value="50">50</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
 
-                <TabsContent value="supply-chain" className="mt-4 space-y-4">
-                  <Card className={contentCardClass}>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-xl tracking-tight sm:text-2xl">Supply Chain</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <SupplyChainFlowChart
-                        companyName={companyName}
-                        exporters={supplyChainExporterFlowNodes}
-                        importers={supplyChainImporterFlowNodes}
-                      />
+                          <div className="overflow-hidden rounded-2xl border border-border/70 bg-card">
+                            <div className="overflow-x-auto">
+                              <Table className="min-w-[1280px] text-sm">
+                                <TableHeader>
+                                  <TableRow className="bg-slate-50/90 hover:bg-slate-50/90">
+                                    <TableHead className="sticky left-0 z-20 w-[130px] min-w-[130px] bg-slate-50/90 font-semibold">
+                                      Date
+                                    </TableHead>
+                                    <TableHead className="w-[260px] min-w-[260px]">Importer</TableHead>
+                                    <TableHead className="w-[260px] min-w-[260px]">Exporter</TableHead>
+                                    <TableHead className="w-[120px] min-w-[120px]">HS Code</TableHead>
+                                    <TableHead className="w-[180px] min-w-[180px]">Product</TableHead>
+                                    <TableHead className="w-[280px] min-w-[280px]">Product Description</TableHead>
+                                    <TableHead className="w-[140px] min-w-[140px]">Origin</TableHead>
+                                    <TableHead className="w-[140px] min-w-[140px]">Destination</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {paginatedPurchaseRows.map((row, index) => (
+                                    <TableRow
+                                      key={row.id ?? `${row.company_id}-${row.date ?? "na"}-${index}`}
+                                      className={cn(
+                                        "border-b border-slate-200/70 hover:bg-slate-100/70",
+                                        index % 2 === 0 ? "bg-white" : "bg-slate-50/45",
+                                      )}
+                                    >
+                                      <TableCell className="sticky left-0 z-10 bg-inherit">{formatDate(row.date)}</TableCell>
+                                      <TableCell className="max-w-[260px] break-words">{row.importer ?? "—"}</TableCell>
+                                      <TableCell className="max-w-[260px] break-words">{row.exporter ?? "—"}</TableCell>
+                                      <TableCell>{row.hs_code ?? "—"}</TableCell>
+                                      <TableCell className="max-w-[180px] break-words">{row.product ?? "—"}</TableCell>
+                                      <TableCell className="max-w-[280px] text-muted-foreground">
+                                        <div
+                                          className="line-clamp-2 break-words leading-5"
+                                          title={row.product_description ?? "—"}
+                                        >
+                                          {row.product_description ?? "—"}
+                                        </div>
+                                      </TableCell>
+                                      <TableCell>{row.origin_country ?? "—"}</TableCell>
+                                      <TableCell>{row.destination_country ?? "—"}</TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </div>
 
-                      {supplyChainRows.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No supply chain records available for this company.</p>
-                      ) : (
-                        <div className="overflow-x-auto rounded-2xl border border-border/60">
-                          <Table className="min-w-[1400px] text-sm">
-                            <TableHeader>
-                              <TableRow className="bg-muted/35 hover:bg-muted/35">
-                                <TableHead className="sticky left-0 z-20 w-[270px] min-w-[270px] bg-muted/35 font-semibold">
-                                  Exporter / Supplier
-                                </TableHead>
-                                <TableHead className="w-[140px] min-w-[140px]">Country</TableHead>
-                                <TableHead className="w-[150px] min-w-[150px]">Relationship</TableHead>
-                                <TableHead className="w-[220px] min-w-[220px]">Product</TableHead>
-                                <TableHead className="w-[120px] min-w-[120px]">HS Code</TableHead>
-                                <TableHead className="w-[120px] min-w-[120px] text-right">Trades</TableHead>
-                                <TableHead className="w-[150px] min-w-[150px] text-right">Trade Freq.</TableHead>
-                                <TableHead className="w-[140px] min-w-[140px] text-right">KG Weight</TableHead>
-                                <TableHead className="w-[130px] min-w-[130px] text-right">Quantity</TableHead>
-                                <TableHead className="w-[130px] min-w-[130px] text-right">Volume (MT)</TableHead>
-                                <TableHead className="w-[140px] min-w-[140px] text-right">Weight Ratio</TableHead>
-                                <TableHead className="w-[145px] min-w-[145px] text-right">Quantity Ratio</TableHead>
-                                <TableHead className="w-[160px] min-w-[160px] text-right">Price Ratio</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {supplyChainRows.map((row) => (
-                                <TableRow key={row.id} className="hover:bg-muted/25">
-                                  <TableCell className="sticky left-0 z-10 max-w-[270px] bg-card font-medium">
-                                    <div className="break-words">{row.exporter ?? row.supplier_name ?? "—"}</div>
-                                  </TableCell>
-                                  <TableCell>{row.supplier_country ?? "—"}</TableCell>
-                                  <TableCell>{row.relationship_type ?? "—"}</TableCell>
-                                  <TableCell className="max-w-[220px] break-words">{row.product ?? "—"}</TableCell>
-                                  <TableCell>{row.hs_code ?? "—"}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatNumber(row.trades_sum)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatRatio(row.trade_frequency_ratio)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatNumber(row.kg_weight)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatNumber(row.quantity)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatNumber(row.volume_mt)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatRatio(row.weight_ratio)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatRatio(row.quantity_ratio)}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{formatRatio(row.total_price_ratio)}</TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
+                          <div className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card/70 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-xs text-muted-foreground">
+                              Showing {formatNumber(purchasePageStart)}-{formatNumber(purchasePageEnd)} of {formatNumber(totalPurchaseRows)}
+                            </p>
+                            <div className="flex items-center justify-between gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 min-w-[84px] rounded-full px-3 text-xs"
+                                onClick={() => setPurchaseCurrentPage((prev) => Math.max(1, prev - 1))}
+                                disabled={purchaseCurrentPage === 1}
+                              >
+                                Previous
+                              </Button>
+                              <span className="text-xs font-medium text-slate-600">
+                                Page {formatNumber(purchaseCurrentPage)} / {formatNumber(purchaseTotalPages)}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 min-w-[84px] rounded-full px-3 text-xs"
+                                onClick={() => setPurchaseCurrentPage((prev) => Math.min(purchaseTotalPages, prev + 1))}
+                                disabled={purchaseCurrentPage >= purchaseTotalPages}
+                              >
+                                Next
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </CardContent>
@@ -1870,6 +2061,7 @@ export default function MarketIntelligenceCompanyProfile() {
           )}
         </div>
       </div>
+
     </div>
   );
 }

@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Users,
   Database,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,6 +17,7 @@ const customerNavItems = [
   { label: "Focus", href: "/market-intelligence", icon: Globe },
   { label: "TRR", href: "/my-company", icon: Building2 },
   { label: "Orders", href: "/my-company/orders", icon: Package },
+  { label: "AI", href: "/ai-agent", icon: Bot },
   { label: "Invoices", href: "/my-company/invoices", icon: FileText },
   { label: "Upload", href: "/upload", icon: Upload },
 ];

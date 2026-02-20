@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import {
   Table,
   TableBody,
@@ -25,6 +25,8 @@ interface DataTableProps<T> {
   sortKey?: string;
   sortDirection?: "asc" | "desc";
   onSort?: (key: string) => void;
+  enableColumnReorder?: boolean;
+  onColumnReorder?: (fromKey: string, toKey: string) => void;
   onRowClick?: (item: T) => void;
   emptyMessage?: string;
   className?: string;
@@ -36,10 +38,15 @@ export function DataTable<T extends { id?: string | number }>({
   sortKey,
   sortDirection,
   onSort,
+  enableColumnReorder = false,
+  onColumnReorder,
   onRowClick,
   emptyMessage = "No data available",
   className,
 }: DataTableProps<T>) {
+  const [draggingColumnKey, setDraggingColumnKey] = useState<string | null>(null);
+  const [dragOverColumnKey, setDragOverColumnKey] = useState<string | null>(null);
+
   const getSortIcon = (columnKey: string) => {
     if (sortKey !== columnKey) {
       return <ChevronsUpDown className="h-4 w-4 text-muted-foreground/50" />;
@@ -57,6 +64,12 @@ export function DataTable<T extends { id?: string | number }>({
     right: "text-right",
   };
 
+  const handleColumnDrop = (targetKey: string) => {
+    if (!enableColumnReorder) return;
+    if (!draggingColumnKey || draggingColumnKey === targetKey) return;
+    onColumnReorder?.(draggingColumnKey, targetKey);
+  };
+
   return (
     <div className={cn("rounded-lg border bg-card overflow-hidden", className)}>
       <div className="w-full overflow-x-auto">
@@ -70,9 +83,33 @@ export function DataTable<T extends { id?: string | number }>({
                   className={cn(
                     "whitespace-nowrap font-semibold text-foreground",
                     alignClasses[column.align || "left"],
-                    column.sortable && "cursor-pointer select-none hover:bg-muted/80"
+                    column.sortable && "cursor-pointer select-none hover:bg-muted/80",
+                    enableColumnReorder && "cursor-grab active:cursor-grabbing",
+                    dragOverColumnKey === column.key && "bg-muted/80"
                   )}
                   onClick={() => column.sortable && onSort?.(column.key)}
+                  draggable={enableColumnReorder}
+                  onDragStart={() => {
+                    if (!enableColumnReorder) return;
+                    setDraggingColumnKey(column.key);
+                  }}
+                  onDragOver={(event) => {
+                    if (!enableColumnReorder || !draggingColumnKey) return;
+                    event.preventDefault();
+                    setDragOverColumnKey(column.key);
+                  }}
+                  onDrop={(event) => {
+                    if (!enableColumnReorder) return;
+                    event.preventDefault();
+                    handleColumnDrop(column.key);
+                    setDraggingColumnKey(null);
+                    setDragOverColumnKey(null);
+                  }}
+                  onDragEnd={() => {
+                    if (!enableColumnReorder) return;
+                    setDraggingColumnKey(null);
+                    setDragOverColumnKey(null);
+                  }}
                 >
                   <div className={cn(
                     "flex items-center gap-1",

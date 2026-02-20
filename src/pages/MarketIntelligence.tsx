@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Search, ChevronRight, RotateCcw, ArrowUpDown, Pin, PinOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Search, ChevronRight, RotateCcw, ArrowUpDown, Bookmark, BookmarkCheck, MoreHorizontal } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,15 +14,31 @@ import { DataTable } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { WorldMap } from "@/components/market/WorldMap";
 import { CompanyProfileDrawer } from "@/components/market/CompanyProfileDrawer";
 import { MarketAnalysisTab } from "@/components/market-analysis/MarketAnalysisTab";
 import { TopBar } from "@/components/layout/TopBar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { cn } from "@/lib/utils";
 import { getFlagEmoji } from "@/lib/flags";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useToast } from "@/hooks/use-toast";
 import type { Company, Country, HsCode, TradeHistoryRow } from "@/data/market-intelligence/types";
 import {
   getAvailableMonthsFromDataset,
@@ -59,103 +75,66 @@ type MarketSectionTab =
   | "market-analysis";
 
 type CompanyListMode = "overview" | "focus";
+type CompanyColumnKey =
+  | "pin"
+  | "status"
+  | "country"
+  | "company"
+  | "type"
+  | "product"
+  | "customerType"
+  | "tradeSum"
+  | "action";
+
+type ReplacementRequestEntry = {
+  companyId: string;
+  reason: string;
+  requestedAt: string;
+};
 
 const MARKET_TAB_STORAGE_KEY = "market-intelligence-active-tab";
 const MARKET_FOCUS_IDS_STORAGE_PREFIX = "market-intelligence-focus-company-ids";
 const MARKET_FOCUS_MODE_STORAGE_PREFIX = "market-intelligence-focus-mode";
+const MARKET_TOP_PIN_IDS_STORAGE_PREFIX = "market-intelligence-top-pin-company-ids";
+const MARKET_COMPANY_REPLACE_REQUESTS_STORAGE_PREFIX = "market-intelligence-company-replace-requests";
+const MARKET_COMPANY_COLUMN_ORDER_STORAGE_KEY = "market-intelligence-company-column-order-v1";
+const DEFAULT_COMPANY_COLUMN_ORDER: CompanyColumnKey[] = [
+  "pin",
+  "status",
+  "country",
+  "company",
+  "type",
+  "product",
+  "customerType",
+  "tradeSum",
+  "action",
+];
 
 const marketSectionTabs: Array<{ key: MarketSectionTab; label: string }> = [
   { key: "market-insights", label: "Global Demand" },
   { key: "market-analysis", label: "Market Analysis" },
 ];
 
+const sanitizeCompanyColumnOrder = (value: unknown): CompanyColumnKey[] => {
+  if (!Array.isArray(value)) return DEFAULT_COMPANY_COLUMN_ORDER;
+  const allowed = new Set<CompanyColumnKey>(DEFAULT_COMPANY_COLUMN_ORDER);
+  const unique = value.filter((item): item is CompanyColumnKey => typeof item === "string" && allowed.has(item as CompanyColumnKey));
+  const missing = DEFAULT_COMPANY_COLUMN_ORDER.filter((key) => !unique.includes(key));
+  return [...unique, ...missing];
+};
+
 function CustomerTypeCell({ value }: { value?: string | null }) {
   const textValue = (value ?? "").trim() || "—";
-  const contentId = useId();
-  const textRef = useRef<HTMLDivElement | null>(null);
-  const [isOverflowing, setIsOverflowing] = useState(false);
-
-  useEffect(() => {
-    const element = textRef.current;
-    if (!element) {
-      setIsOverflowing(false);
-      return;
-    }
-
-    const checkOverflow = () => {
-      const quickOverflow = element.scrollHeight - element.clientHeight > 1;
-      if (quickOverflow) {
-        setIsOverflowing(true);
-        return;
-      }
-
-      const clone = element.cloneNode(true) as HTMLDivElement;
-      clone.style.position = "fixed";
-      clone.style.left = "-9999px";
-      clone.style.top = "0";
-      clone.style.visibility = "hidden";
-      clone.style.pointerEvents = "none";
-      clone.style.height = "auto";
-      clone.style.maxHeight = "none";
-      clone.style.overflow = "visible";
-      clone.style.display = "block";
-      clone.style.webkitLineClamp = "unset";
-      clone.style.WebkitLineClamp = "unset";
-      clone.classList.remove("line-clamp-2");
-      clone.style.width = `${element.clientWidth}px`;
-      document.body.appendChild(clone);
-      const fullHeight = clone.scrollHeight;
-      clone.remove();
-
-      const lineHeight = Number.parseFloat(window.getComputedStyle(element).lineHeight || "20");
-      const twoLineHeight = lineHeight * 2 + 1;
-      setIsOverflowing(fullHeight > twoLineHeight);
-    };
-
-    checkOverflow();
-
-    if (typeof ResizeObserver !== "undefined") {
-      const observer = new ResizeObserver(() => checkOverflow());
-      observer.observe(element);
-      return () => observer.disconnect();
-    }
-
-    window.addEventListener("resize", checkOverflow);
-    return () => window.removeEventListener("resize", checkOverflow);
-  }, [textValue]);
-
-  const trigger = (
-    <div
-      ref={textRef}
-      className="line-clamp-2 min-h-[2.5rem] break-words text-sm leading-5 text-foreground focus:outline-none"
-      tabIndex={isOverflowing ? 0 : -1}
-      aria-describedby={isOverflowing ? contentId : undefined}
-    >
+  return (
+    <div className="line-clamp-2 min-h-[2.5rem] break-words text-sm leading-5 text-foreground" title={textValue !== "—" ? textValue : undefined}>
       {textValue}
     </div>
-  );
-
-  if (!isOverflowing || textValue === "—") {
-    return trigger;
-  }
-
-  return (
-    <Tooltip delayDuration={120}>
-      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
-      <TooltipContent
-        id={contentId}
-        side="top"
-        align="start"
-        className="max-w-[320px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm leading-5 text-slate-700 shadow-[0_10px_30px_rgba(15,23,42,0.10)]"
-      >
-        {textValue}
-      </TooltipContent>
-    </Tooltip>
   );
 }
 
 export default function MarketIntelligence() {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<MarketSectionTab>(() => {
     if (typeof window === "undefined") return "market-insights";
     const stored = window.sessionStorage.getItem(MARKET_TAB_STORAGE_KEY);
@@ -169,13 +148,32 @@ export default function MarketIntelligence() {
   const [isCompanyProfileOpen, setIsCompanyProfileOpen] = useState(false);
   const [companyListMode, setCompanyListMode] = useState<CompanyListMode>("overview");
   const [focusedCompanyIds, setFocusedCompanyIds] = useState<string[]>([]);
+  const [topPinnedCompanyIds, setTopPinnedCompanyIds] = useState<string[]>([]);
   const isMobile = useIsMobile();
   const tableRef = useRef<HTMLDivElement | null>(null);
 
   const [companySortKey, setCompanySortKey] = useState("tradeSum");
   const [companySortDirection, setCompanySortDirection] = useState<"asc" | "desc">("desc");
+  const [companyColumnOrder, setCompanyColumnOrder] = useState<CompanyColumnKey[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_COMPANY_COLUMN_ORDER;
+    try {
+      const raw = window.localStorage.getItem(MARKET_COMPANY_COLUMN_ORDER_STORAGE_KEY);
+      if (!raw) return DEFAULT_COMPANY_COLUMN_ORDER;
+      return sanitizeCompanyColumnOrder(JSON.parse(raw));
+    } catch {
+      return DEFAULT_COMPANY_COLUMN_ORDER;
+    }
+  });
 
   const [companySearch, setCompanySearch] = useState("");
+  const [companyPageSize, setCompanyPageSize] = useState(20);
+  const [companyCurrentPage, setCompanyCurrentPage] = useState(1);
+  const [replacementRequests, setReplacementRequests] = useState<ReplacementRequestEntry[]>([]);
+  const [replaceRequestHydrated, setReplaceRequestHydrated] = useState(false);
+  const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false);
+  const [requestCompanyDraft, setRequestCompanyDraft] = useState<{ id: string; name: string } | null>(null);
+  const [replaceRequestReason, setReplaceRequestReason] = useState("");
+  const [replaceRequestReasonError, setReplaceRequestReasonError] = useState<string | null>(null);
   const [isViewLoading, setIsViewLoading] = useState(true);
   const [isCompanyDataLoading, setIsCompanyDataLoading] = useState(false);
   const [companyDataSource, setCompanyDataSource] = useState<CompanyListDataset | null>(null);
@@ -187,6 +185,14 @@ export default function MarketIntelligence() {
   );
   const focusModeStorageKey = useMemo(
     () => `${MARKET_FOCUS_MODE_STORAGE_PREFIX}:${selectedHsCode.code || "__default__"}`,
+    [selectedHsCode.code],
+  );
+  const topPinIdsStorageKey = useMemo(
+    () => `${MARKET_TOP_PIN_IDS_STORAGE_PREFIX}:${selectedHsCode.code || "__default__"}`,
+    [selectedHsCode.code],
+  );
+  const replacementRequestsStorageKey = useMemo(
+    () => `${MARKET_COMPANY_REPLACE_REQUESTS_STORAGE_PREFIX}:${selectedHsCode.code || "__default__"}`,
     [selectedHsCode.code],
   );
 
@@ -298,9 +304,92 @@ export default function MarketIntelligence() {
   }, [focusedCompanyIds, selectedHsCode.code, focusIdsStorageKey]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      setTopPinnedCompanyIds([]);
+      return;
+    }
+
+    try {
+      const rawIds = window.localStorage.getItem(topPinIdsStorageKey);
+      const parsedIds = rawIds ? JSON.parse(rawIds) : [];
+      const restoredIds = Array.isArray(parsedIds)
+        ? parsedIds.filter((value): value is string => typeof value === "string" && value.length > 0)
+        : [];
+      setTopPinnedCompanyIds(restoredIds);
+    } catch {
+      setTopPinnedCompanyIds([]);
+    }
+  }, [topPinIdsStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !selectedHsCode.code) return;
+    window.localStorage.setItem(topPinIdsStorageKey, JSON.stringify(topPinnedCompanyIds));
+  }, [selectedHsCode.code, topPinIdsStorageKey, topPinnedCompanyIds]);
+
+  useEffect(() => {
     if (typeof window === "undefined" || !selectedHsCode.code) return;
     window.localStorage.setItem(focusModeStorageKey, companyListMode);
   }, [companyListMode, selectedHsCode.code, focusModeStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(MARKET_COMPANY_COLUMN_ORDER_STORAGE_KEY, JSON.stringify(companyColumnOrder));
+  }, [companyColumnOrder]);
+
+  useEffect(() => {
+    setReplaceRequestHydrated(false);
+    if (typeof window === "undefined") {
+      setReplacementRequests([]);
+      setReplaceRequestHydrated(true);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(replacementRequestsStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(parsed)) {
+        setReplacementRequests([]);
+      } else {
+        const mapped = parsed.flatMap((entry): ReplacementRequestEntry[] => {
+          if (typeof entry === "string" && entry.trim()) {
+            return [{
+              companyId: entry,
+              reason: "Requested by customer",
+              requestedAt: new Date().toISOString(),
+            }];
+          }
+          if (
+            typeof entry === "object" &&
+            entry !== null &&
+            "companyId" in entry &&
+            typeof entry.companyId === "string" &&
+            entry.companyId.trim() &&
+            "reason" in entry &&
+            typeof entry.reason === "string"
+          ) {
+            return [{
+              companyId: entry.companyId,
+              reason: entry.reason.trim() || "No reason provided",
+              requestedAt:
+                "requestedAt" in entry && typeof entry.requestedAt === "string"
+                  ? entry.requestedAt
+                  : new Date().toISOString(),
+            }];
+          }
+          return [];
+        });
+        setReplacementRequests(mapped);
+      }
+    } catch {
+      setReplacementRequests([]);
+    } finally {
+      setReplaceRequestHydrated(true);
+    }
+  }, [replacementRequestsStorageKey]);
+
+  useEffect(() => {
+    if (!replaceRequestHydrated || typeof window === "undefined") return;
+    window.localStorage.setItem(replacementRequestsStorageKey, JSON.stringify(replacementRequests));
+  }, [replaceRequestHydrated, replacementRequests, replacementRequestsStorageKey]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -337,14 +426,12 @@ export default function MarketIntelligence() {
     });
   }, [companyDataSource, selectedHsCode.code, startMonth, endMonth]);
 
-  const allCompanySummaries = useMemo(() => dbCompanySummaries, [dbCompanySummaries]);
-
   const companySummaries = useMemo(
     () =>
       selectedCountryCode
-        ? allCompanySummaries.filter((row) => row.countryCode === selectedCountryCode)
-        : allCompanySummaries,
-    [allCompanySummaries, selectedCountryCode],
+        ? dbCompanySummaries.filter((row) => row.countryCode === selectedCountryCode)
+        : dbCompanySummaries,
+    [dbCompanySummaries, selectedCountryCode],
   );
 
   const getCountryLabel = useCallback((countryCode: string) => {
@@ -359,7 +446,7 @@ export default function MarketIntelligence() {
       { metricTotal: number; importersCount: number; newCustomers: number; existingCustomers: number }
     >();
 
-    allCompanySummaries.forEach((row) => {
+    dbCompanySummaries.forEach((row) => {
       if (!row.countryCode) return;
       const current = grouped.get(row.countryCode) ?? {
         metricTotal: 0,
@@ -400,7 +487,7 @@ export default function MarketIntelligence() {
         existingCustomers,
       };
     });
-  }, [allCompanySummaries, getCountryLabel]);
+  }, [dbCompanySummaries, getCountryLabel]);
 
   const activeCountryCount = useMemo(
     () => mapCountryRows.filter((row) => row.importersCount > 0).length,
@@ -546,14 +633,67 @@ export default function MarketIntelligence() {
   }, [filteredCompanies, companySortDirection, companySortKey, getCountryLabel]);
 
   const focusedCompanySet = useMemo(() => new Set(focusedCompanyIds), [focusedCompanyIds]);
+  const topPinnedCompanySet = useMemo(() => new Set(topPinnedCompanyIds), [topPinnedCompanyIds]);
+  const replaceRequestCompanySet = useMemo(
+    () => new Set(replacementRequests.map((entry) => entry.companyId)),
+    [replacementRequests],
+  );
+  const replaceRequestReasonByCompanyId = useMemo(() => {
+    const reasonMap = new Map<string, string>();
+    replacementRequests.forEach((entry) => reasonMap.set(entry.companyId, entry.reason));
+    return reasonMap;
+  }, [replacementRequests]);
 
   const visibleCompanies = useMemo(() => {
-    if (companyListMode === "overview") return sortedCompanies;
-    return sortedCompanies.filter((row) => focusedCompanySet.has(row.id));
-  }, [companyListMode, sortedCompanies, focusedCompanySet]);
+    const sortedMap = new Map(sortedCompanies.map((row) => [row.id, row]));
+    const focusedInCurrentResult = focusedCompanyIds
+      .map((id) => sortedMap.get(id))
+      .filter((row): row is (typeof sortedCompanies)[number] => Boolean(row));
+    const topPinnedInCurrentResult = topPinnedCompanyIds
+      .map((id) => sortedMap.get(id))
+      .filter((row): row is (typeof sortedCompanies)[number] => Boolean(row));
+
+    if (companyListMode === "focus") {
+      return focusedInCurrentResult;
+    }
+
+    const topPinnedIds = new Set(topPinnedInCurrentResult.map((row) => row.id));
+    const unpinned = sortedCompanies.filter((row) => !topPinnedIds.has(row.id));
+    return [...topPinnedInCurrentResult, ...unpinned];
+  }, [companyListMode, sortedCompanies, focusedCompanyIds, topPinnedCompanyIds]);
+
+  const companyTotalRows = visibleCompanies.length;
+  const companyTotalPages = useMemo(
+    () => Math.max(1, Math.ceil(companyTotalRows / companyPageSize)),
+    [companyTotalRows, companyPageSize],
+  );
+  const paginatedCompanies = useMemo(() => {
+    const start = (companyCurrentPage - 1) * companyPageSize;
+    return visibleCompanies.slice(start, start + companyPageSize);
+  }, [visibleCompanies, companyCurrentPage, companyPageSize]);
+  const companyPageStart = companyTotalRows === 0 ? 0 : (companyCurrentPage - 1) * companyPageSize + 1;
+  const companyPageEnd = Math.min(companyCurrentPage * companyPageSize, companyTotalRows);
+
+  useEffect(() => {
+    setCompanyCurrentPage(1);
+  }, [companySearch, companyListMode, selectedCountryCode, selectedHsCode.code, startMonth, endMonth]);
+
+  useEffect(() => {
+    if (companyCurrentPage > companyTotalPages) {
+      setCompanyCurrentPage(companyTotalPages);
+    }
+  }, [companyCurrentPage, companyTotalPages]);
 
   const handleToggleFocusCompany = useCallback((companyId: string) => {
     setFocusedCompanyIds((prev) => (
+      prev.includes(companyId)
+        ? prev.filter((id) => id !== companyId)
+        : [companyId, ...prev]
+    ));
+  }, []);
+
+  const handleToggleTopPinCompany = useCallback((companyId: string) => {
+    setTopPinnedCompanyIds((prev) => (
       prev.includes(companyId)
         ? prev.filter((id) => id !== companyId)
         : [companyId, ...prev]
@@ -572,6 +712,66 @@ export default function MarketIntelligence() {
   const handleClearFocusMode = useCallback(() => {
     setFocusedCompanyIds([]);
     setCompanyListMode("overview");
+  }, []);
+
+  const openRequestCompanyReplacementDialog = useCallback((companyId: string, companyName: string) => {
+    setRequestCompanyDraft({ id: companyId, name: companyName });
+    setReplaceRequestReason("");
+    setReplaceRequestReasonError(null);
+    setIsRequestDialogOpen(true);
+  }, []);
+
+  const handleUndoCompanyReplacement = useCallback((companyId: string, companyName: string) => {
+    setReplacementRequests((prev) => prev.filter((entry) => entry.companyId !== companyId));
+    toast({
+      title: "Request removed",
+      description: `${companyName} replacement request was undone.`,
+    });
+  }, [toast]);
+
+  const handleConfirmCompanyReplacement = useCallback(() => {
+    if (!requestCompanyDraft) return;
+    const reason = replaceRequestReason.trim();
+    if (!reason) {
+      setReplaceRequestReasonError("Please enter a reason.");
+      return;
+    }
+
+    setReplacementRequests((prev) => {
+      const next = prev.filter((entry) => entry.companyId !== requestCompanyDraft.id);
+      next.unshift({
+        companyId: requestCompanyDraft.id,
+        reason,
+        requestedAt: new Date().toISOString(),
+      });
+      return next;
+    });
+
+    toast({
+      title: "Replacement request sent",
+      description: `${requestCompanyDraft.name} was flagged for ORIGO backoffice review.`,
+    });
+
+    setIsRequestDialogOpen(false);
+    setReplaceRequestReason("");
+    setReplaceRequestReasonError(null);
+    setRequestCompanyDraft(null);
+  }, [replaceRequestReason, requestCompanyDraft, toast]);
+
+  const handleReorderCompanyColumn = useCallback((fromKey: string, toKey: string) => {
+    setCompanyColumnOrder((prev) => {
+      const normalized = sanitizeCompanyColumnOrder(prev);
+      if (!normalized.includes(fromKey as CompanyColumnKey) || !normalized.includes(toKey as CompanyColumnKey)) {
+        return normalized;
+      }
+      const next = [...normalized];
+      const fromIndex = next.indexOf(fromKey as CompanyColumnKey);
+      const toIndex = next.indexOf(toKey as CompanyColumnKey);
+      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return normalized;
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
   }, []);
 
   const handleCompanySort = (key: string) => {
@@ -622,17 +822,47 @@ export default function MarketIntelligence() {
     });
   };
 
-  const openCompanyProfilePage = (companyId: string) => {
+  const openCompanyProfilePage = useCallback((companyId: string) => {
     const params = new URLSearchParams();
     if (selectedHsCode.code) params.set("hs", selectedHsCode.code);
     if (startMonth) params.set("start", startMonth);
     if (endMonth) params.set("end", endMonth);
     if (selectedCountryCode) params.set("country", selectedCountryCode);
     navigate(`/market-intelligence/company/${encodeURIComponent(companyId)}?${params.toString()}`);
-  };
+  }, [endMonth, navigate, selectedCountryCode, selectedHsCode.code, startMonth]);
 
-  const companyColumns = [
-    {
+  const companyColumnMap = useMemo(() => ({
+    pin: {
+      key: "pin",
+      header: "Focus",
+      width: "132px",
+      align: "center" as const,
+      render: (item: typeof companySummaries[number]) => (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={cn(
+            "h-8 w-8 rounded-full",
+            focusedCompanySet.has(item.id) ? "text-[#b27700] hover:text-[#8b5f00]" : "text-muted-foreground hover:text-foreground",
+          )}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (focusedCompanySet.has(item.id)) {
+              handleToggleFocusCompany(item.id);
+            } else {
+              handleSelectCompanyForFocus(item.id);
+            }
+          }}
+          title={focusedCompanySet.has(item.id) ? "Remove from focus list" : "Add to focus list"}
+          aria-label={focusedCompanySet.has(item.id) ? `Remove ${item.name} from focus` : `Add ${item.name} to focus`}
+        >
+          {focusedCompanySet.has(item.id) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+        </Button>
+      ),
+    },
+    status: {
       key: "status",
       header: "Status",
       width: "88px",
@@ -649,7 +879,7 @@ export default function MarketIntelligence() {
         />
       ),
     },
-    {
+    country: {
       key: "country",
       header: "Country",
       width: "190px",
@@ -659,24 +889,32 @@ export default function MarketIntelligence() {
           <CountryFlag countryCode={item.countryCode} countryName={getCountryLabel(item.countryCode)} size="sm" />
           <div>
             <p className="font-medium">{getCountryLabel(item.countryCode)}</p>
-            <p className="text-xs text-muted-foreground">{item.countryCode || "—"}</p>
+            <p className="text-xs text-muted-foreground">{item.countryCode || "-"}</p>
           </div>
         </div>
       ),
     },
-    {
+    company: {
       key: "company",
       header: "Company",
       width: "260px",
       sortable: true,
       render: (item: typeof companySummaries[number]) => (
-        <div className="flex items-center gap-2">
-          {focusedCompanySet.has(item.id) && <Pin className="h-3.5 w-3.5 text-[#ffbd59]" />}
+        <div className="space-y-0.5">
           <p className="font-medium">{item.name}</p>
+          {topPinnedCompanySet.has(item.id) ? (
+            <p className="text-xs font-medium text-[#b27700]">Pinned to top</p>
+          ) : null}
+          {replaceRequestCompanySet.has(item.id) ? (
+            <p className="text-xs font-medium text-amber-700">
+              Replacement requested
+              {replaceRequestReasonByCompanyId.get(item.id) ? ` · ${replaceRequestReasonByCompanyId.get(item.id)}` : ""}
+            </p>
+          ) : null}
         </div>
       ),
     },
-    {
+    type: {
       key: "type",
       header: "Type",
       width: "130px",
@@ -685,7 +923,7 @@ export default function MarketIntelligence() {
         <span>{item.buyerType ?? "Importer"}</span>
       ),
     },
-    {
+    product: {
       key: "product",
       header: "Product",
       width: "190px",
@@ -695,7 +933,7 @@ export default function MarketIntelligence() {
         <span>{item.product ?? selectedHsCode.product}</span>
       ),
     },
-    {
+    customerType: {
       key: "customerType",
       header: "Customer Type",
       width: "300px",
@@ -705,7 +943,7 @@ export default function MarketIntelligence() {
         <CustomerTypeCell value={item.productDescription} />
       ),
     },
-    {
+    tradeSum: {
       key: "tradeSum",
       header: "Trade Sum",
       width: "150px",
@@ -715,39 +953,12 @@ export default function MarketIntelligence() {
         <span className="font-medium">{formatNumber(item.tradeSum)}</span>
       ),
     },
-    {
+    action: {
       key: "action",
       header: "",
-      width: "220px",
+      width: "300px",
       render: (item: typeof companySummaries[number]) => (
-        <div className="flex items-center justify-end gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-1 text-foreground hover:text-foreground"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (focusedCompanySet.has(item.id)) {
-                handleToggleFocusCompany(item.id);
-              } else {
-                handleSelectCompanyForFocus(item.id);
-              }
-            }}
-          >
-            {focusedCompanySet.has(item.id) ? (
-              <>
-                <PinOff className="h-4 w-4" />
-                Unpin
-              </>
-            ) : (
-              <>
-                <Pin className="h-4 w-4" />
-                Pin
-              </>
-            )}
-          </Button>
+        <div className="flex items-center justify-end gap-1.5">
           <Button
             type="button"
             variant="ghost"
@@ -762,10 +973,66 @@ export default function MarketIntelligence() {
             View Profile
             <ChevronRight className="h-4 w-4" />
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-8 w-8 rounded-full border-border/70 bg-background/90"
+                aria-label={`More actions for ${item.name}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44 bg-popover">
+              <DropdownMenuItem
+                onSelect={() => {
+                  handleToggleTopPinCompany(item.id);
+                }}
+              >
+                {topPinnedCompanySet.has(item.id) ? "Unpin from Top" : "Pin to Top"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => {
+                  if (replaceRequestCompanySet.has(item.id)) {
+                    handleUndoCompanyReplacement(item.id, item.name);
+                  } else {
+                    openRequestCompanyReplacementDialog(item.id, item.name);
+                  }
+                }}
+              >
+                {replaceRequestCompanySet.has(item.id) ? "Undo Requested" : "Request Replace"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ),
     },
-  ];
+  }), [
+    focusedCompanySet,
+    topPinnedCompanySet,
+    getCountryLabel,
+    handleSelectCompanyForFocus,
+    handleToggleTopPinCompany,
+    handleToggleFocusCompany,
+    handleUndoCompanyReplacement,
+    openRequestCompanyReplacementDialog,
+    openCompanyProfilePage,
+    replaceRequestReasonByCompanyId,
+    replaceRequestCompanySet,
+    selectedHsCode.product,
+  ]);
+
+  const companyColumns = useMemo(() => {
+    const orderedKeys = sanitizeCompanyColumnOrder(companyColumnOrder);
+    return orderedKeys.map((key) => companyColumnMap[key]);
+  }, [companyColumnMap, companyColumnOrder]);
 
   return (
     <div className="flex flex-col h-full">
@@ -822,27 +1089,23 @@ export default function MarketIntelligence() {
                     value={selectedHsCode.code}
                     onValueChange={(value) => {
                       const hs = hsCodeOptions.find((item) => item.code === value);
-                      if (hs) setSelectedHsCode(hs);
+                      if (hs) {
+                        setSelectedHsCode(hs);
+                      }
                     }}
                     disabled={hsCodeOptions.length === 0}
                   >
                     <SelectTrigger className="h-10 w-full rounded-2xl border-border/70 bg-background/90 px-3.5 text-sm focus:ring-1 focus:ring-slate-300">
                       <SelectValue>
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate font-medium">
-                            {hsCodeOptions.length > 0 ? selectedHsCode.product : "No product data"}
-                          </span>
-                        </div>
+                        {hsCodeOptions.length > 0 ? selectedHsCode.product : "No product data"}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent className="bg-popover">
                       {hsCodeOptions.map((hs) => (
                         <SelectItem key={hs.code} value={hs.code}>
-                          <div className="flex w-full items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate font-medium">{hs.product}</p>
-                              <p className="truncate text-xs text-muted-foreground">{hs.description}</p>
-                            </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">{hs.product}</p>
+                            <p className="truncate text-xs text-muted-foreground">{hs.description}</p>
                           </div>
                         </SelectItem>
                       ))}
@@ -949,13 +1212,16 @@ export default function MarketIntelligence() {
                     <h2 className="text-base font-semibold">Company List</h2>
                     <p className="text-sm text-muted-foreground">
                       {companyListMode === "focus"
-                        ? `Focused companies (${visibleCompanies.length})`
+                        ? `Focused companies (${companyTotalRows})`
                         : selectedCountry
                           ? `Showing companies in ${selectedCountry.name}`
                           : "Showing all companies across all countries"}
                     </p>
                     {companyListMode === "overview" && (
-                      <p className="text-xs text-muted-foreground">Click a company to pin and switch to Focus mode.</p>
+                      <p className="text-xs text-muted-foreground">Use the Focus button to add a company into Focus mode.</p>
+                    )}
+                    {!isMobile && (
+                      <p className="text-xs text-muted-foreground">Drag table headers to reorder columns.</p>
                     )}
                   </div>
                   <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
@@ -1016,6 +1282,17 @@ export default function MarketIntelligence() {
                         Reset view
                       </Button>
                     )}
+                    {!isMobile && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCompanyColumnOrder(DEFAULT_COMPANY_COLUMN_ORDER)}
+                        className="rounded-2xl border-border/70 bg-background/90"
+                      >
+                        Reset columns
+                      </Button>
+                    )}
                     <div className="relative w-full sm:w-auto">
                       <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -1064,25 +1341,19 @@ export default function MarketIntelligence() {
                     <Skeleton className="h-12 w-full rounded-2xl" />
                   </div>
                 ) : isMobile ? (
-                  visibleCompanies.length === 0 ? (
+                  companyTotalRows === 0 ? (
                     <div className="rounded-2xl border border-dashed border-border/70 bg-card/90 p-6 text-center text-sm text-muted-foreground">
-                      {companyListMode === "focus" ? "No focused companies yet. Select a company in Overview." : "No companies found"}
+                      {companyListMode === "focus" ? "No focused companies yet. Focus a company in Overview." : "No companies found"}
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {visibleCompanies.map((item) => (
+                      {paginatedCompanies.map((item) => (
                         <div
                           key={item.id}
                           className={cn(
                             "rounded-2xl border border-border/60 bg-card px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.05)]",
-                            companyListMode === "overview" && "cursor-pointer hover:bg-muted/20",
                             focusedCompanySet.has(item.id) && "border-[#ffbd59]/65",
                           )}
-                          onClick={() => {
-                            if (companyListMode === "overview") {
-                              handleSelectCompanyForFocus(item.id);
-                            }
-                          }}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 flex items-center gap-3">
@@ -1092,16 +1363,68 @@ export default function MarketIntelligence() {
                                 {focusedCompanySet.has(item.id) && (
                                   <p className="text-xs font-medium text-[#b27700]">Pinned in Focus</p>
                                 )}
+                                {topPinnedCompanySet.has(item.id) && (
+                                  <p className="text-xs font-medium text-[#b27700]">Pinned to Top</p>
+                                )}
+                                {replaceRequestCompanySet.has(item.id) && (
+                                  <p className="truncate text-xs font-medium text-amber-700">
+                                    Requested · {replaceRequestReasonByCompanyId.get(item.id)}
+                                  </p>
+                                )}
                               </div>
                             </div>
-                            <span
-                              className={cn(
-                                "inline-block h-3 w-3 rounded-full",
-                                item.status === "new" ? "bg-[#ffbd59]" : "bg-emerald-500",
-                              )}
-                              title={item.status}
-                              aria-label={item.status}
-                            />
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  "inline-block h-3 w-3 rounded-full",
+                                  item.status === "new" ? "bg-[#ffbd59]" : "bg-emerald-500",
+                                )}
+                                title={item.status}
+                                aria-label={item.status}
+                              />
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    className={cn(
+                                      "h-8 w-8 rounded-xl border-border/70 bg-background/90",
+                                      replaceRequestCompanySet.has(item.id) &&
+                                        "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-50",
+                                    )}
+                                    aria-label={`More actions for ${item.name}`}
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                    }}
+                                  >
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-44 bg-popover">
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      handleToggleTopPinCompany(item.id);
+                                    }}
+                                  >
+                                    {topPinnedCompanySet.has(item.id) ? "Unpin from Top" : "Pin to Top"}
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onSelect={() => {
+                                      if (replaceRequestCompanySet.has(item.id)) {
+                                        handleUndoCompanyReplacement(item.id, item.name);
+                                      } else {
+                                        openRequestCompanyReplacementDialog(item.id, item.name);
+                                      }
+                                    }}
+                                  >
+                                    {replaceRequestCompanySet.has(item.id) ? "Undo Requested" : "Request Replace"}
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
                           </div>
 
                           <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-secondary/45 p-3 text-sm">
@@ -1123,7 +1446,7 @@ export default function MarketIntelligence() {
                             </div>
                           </div>
 
-                          <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="mt-3 grid grid-cols-1 gap-2">
                             <Button
                               type="button"
                               variant="outline"
@@ -1139,21 +1462,21 @@ export default function MarketIntelligence() {
                                 }
                               }}
                             >
-                              {focusedCompanySet.has(item.id) ? "Unpin" : "Pin to Focus"}
+                              {focusedCompanySet.has(item.id) ? "Unfocus" : "Focus"}
                             </Button>
                             <Button
                               type="button"
                               variant="outline"
                               size="sm"
-                              className="h-10 justify-between rounded-2xl border-border/70 bg-background/90"
+                              className="relative h-10 justify-center rounded-2xl border-border/70 bg-background/90"
                               onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 openCompanyProfilePage(item.id);
                               }}
                             >
-                              View Profile
-                              <ChevronRight className="h-4 w-4" />
+                              <span>View Profile</span>
+                              <ChevronRight className="pointer-events-none absolute right-4 h-4 w-4" />
                             </Button>
                           </div>
                         </div>
@@ -1163,18 +1486,13 @@ export default function MarketIntelligence() {
                 ) : (
                   <DataTable
                     columns={companyColumns}
-                    data={visibleCompanies}
+                    data={paginatedCompanies}
                     sortKey={companySortKey}
                     sortDirection={companySortDirection}
                     onSort={handleCompanySort}
-                    onRowClick={
-                      companyListMode === "overview"
-                        ? (item) => {
-                            handleSelectCompanyForFocus((item as typeof companySummaries[number]).id);
-                          }
-                        : undefined
-                    }
-                    emptyMessage={companyListMode === "focus" ? "No focused companies yet. Select a company in Overview." : "No companies found"}
+                    enableColumnReorder
+                    onColumnReorder={handleReorderCompanyColumn}
+                    emptyMessage={companyListMode === "focus" ? "No focused companies yet. Focus a company in Overview." : "No companies found"}
                     className={[
                       "[&_table]:min-w-[1340px] [&_table]:border-separate [&_table]:border-spacing-0",
                       "[&_th]:px-6 [&_th]:py-4 [&_th]:text-[13px] [&_th]:font-semibold [&_th]:tracking-[0.01em] [&_th]:text-slate-600",
@@ -1185,11 +1503,141 @@ export default function MarketIntelligence() {
                     ].join(" ")}
                   />
                 )}
+
+                {!isCompanyLoading && companyTotalRows > 0 && (
+                  <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-border/70 bg-card/70 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {formatNumber(companyPageStart)}-{formatNumber(companyPageEnd)} of {formatNumber(companyTotalRows)}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-2 py-1">
+                        <span className="text-[11px] font-medium text-muted-foreground">Per page</span>
+                        <Select
+                          value={String(companyPageSize)}
+                          onValueChange={(value) => {
+                            setCompanyPageSize(Number(value));
+                            setCompanyCurrentPage(1);
+                          }}
+                        >
+                          <SelectTrigger className="h-7 w-[74px] rounded-full border-none bg-transparent px-2 text-xs shadow-none focus:ring-0">
+                            <SelectValue placeholder="20" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="10">10</SelectItem>
+                            <SelectItem value="20">20</SelectItem>
+                            <SelectItem value="30">30</SelectItem>
+                            <SelectItem value="50">50</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 min-w-[84px] rounded-full px-3 text-xs"
+                        onClick={() => setCompanyCurrentPage((prev) => Math.max(1, prev - 1))}
+                        disabled={companyCurrentPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs font-medium text-slate-600">
+                        Page {formatNumber(companyCurrentPage)} / {formatNumber(companyTotalPages)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 min-w-[84px] rounded-full px-3 text-xs"
+                        onClick={() => setCompanyCurrentPage((prev) => Math.min(companyTotalPages, prev + 1))}
+                        disabled={companyCurrentPage >= companyTotalPages}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </section>
           </div>
         )}
       </div>
+
+      <Dialog
+        open={isRequestDialogOpen}
+        onOpenChange={(open) => {
+          setIsRequestDialogOpen(open);
+          if (!open) {
+            setReplaceRequestReason("");
+            setReplaceRequestReasonError(null);
+            setRequestCompanyDraft(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[540px]">
+          <DialogHeader>
+            <DialogTitle>Request company replacement</DialogTitle>
+            <DialogDescription>
+              {requestCompanyDraft ? `Why do you want to replace "${requestCompanyDraft.name}"?` : "Please provide a reason."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                "Not relevant to current target",
+                "Duplicate company",
+                "Wrong market/country fit",
+                "Low potential",
+              ].map((reason) => (
+                <Button
+                  key={reason}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-full px-3 text-xs"
+                  onClick={() => {
+                    setReplaceRequestReason(reason);
+                    setReplaceRequestReasonError(null);
+                  }}
+                >
+                  {reason}
+                </Button>
+              ))}
+            </div>
+
+            <Textarea
+              value={replaceRequestReason}
+              onChange={(event) => {
+                setReplaceRequestReason(event.target.value);
+                if (replaceRequestReasonError) setReplaceRequestReasonError(null);
+              }}
+              placeholder="Type reason (required)"
+              className="min-h-[110px] rounded-xl"
+            />
+            {replaceRequestReasonError ? (
+              <p className="text-xs text-destructive">{replaceRequestReasonError}</p>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsRequestDialogOpen(false);
+                setReplaceRequestReason("");
+                setReplaceRequestReasonError(null);
+                setRequestCompanyDraft(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleConfirmCompanyReplacement}>
+              Submit request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <CompanyProfileDrawer
         open={isCompanyProfileOpen}
@@ -1208,3 +1656,4 @@ export default function MarketIntelligence() {
     </div>
   );
 }
+

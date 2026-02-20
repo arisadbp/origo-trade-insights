@@ -309,7 +309,7 @@ export function ContractTable() {
   const [rows, setRows] = useState<ContractTableRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("overdue");
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [teamFilter, setTeamFilter] = useState("all");
@@ -368,7 +368,7 @@ export function ContractTable() {
       return;
     }
 
-    setStatusFilter("all");
+    setStatusFilter("overdue");
   }, [searchParams]);
 
   useEffect(() => {

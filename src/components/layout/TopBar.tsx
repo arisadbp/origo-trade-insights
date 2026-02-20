@@ -61,6 +61,11 @@ function MobileMenuSection({
                 >
                   <item.icon className="h-4 w-4" />
                   <span className="font-medium">{item.title}</span>
+                  {item.badge ? (
+                    <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      {item.badge}
+                    </span>
+                  ) : null}
                 </NavLink>
               </SheetClose>
 
@@ -83,6 +88,11 @@ function MobileMenuSection({
                         >
                           <child.icon className="h-3.5 w-3.5" />
                           <span>{child.title}</span>
+                          {child.badge ? (
+                            <span className="ml-auto rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                              {child.badge}
+                            </span>
+                          ) : null}
                         </NavLink>
                       </SheetClose>
                     );

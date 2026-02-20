@@ -10,6 +10,7 @@ import { TopBar } from "@/components/layout/TopBar";
 import {
   ExecutiveTradeDashboard,
   type DashboardContractRow,
+  type DashboardDeliveryRow,
   type DashboardInvoiceRow,
   type DashboardStockRow,
 } from "@/components/charts/ExecutiveTradeDashboard";
@@ -24,6 +25,7 @@ type ContractLineDbRow = {
   line_id: string | null;
   contract_id: string | null;
   job: string | null;
+  product: string | null;
   team: string | null;
   status: string | null;
   ton: number | null;
@@ -49,6 +51,14 @@ type InvoiceDbRow = {
   tons: number | null;
   customer_name: string | null;
   fac: string | null;
+};
+
+type DeliveryDbRow = {
+  delivery_id: string | null;
+  contract_id: string | null;
+  job: string | null;
+  delivery_date: string | null;
+  quantity: number | null;
 };
 
 type ContractMetricRow = DashboardContractRow & {
@@ -143,6 +153,7 @@ export default function MyCompany() {
   const [contractRows, setContractRows] = useState<ContractMetricRow[]>([]);
   const [stockRows, setStockRows] = useState<DashboardStockRow[]>([]);
   const [invoiceRows, setInvoiceRows] = useState<DashboardInvoiceRow[]>([]);
+  const [deliveryRows, setDeliveryRows] = useState<DashboardDeliveryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -161,25 +172,36 @@ export default function MyCompany() {
       setLoading(true);
       setError(null);
 
-      const [contractRes, stockRes, invoiceRes] = await Promise.all([
+      const [contractRes, stockRes, invoiceRes, deliveryRes] = await Promise.all([
         supabase
           .from("contract_lines")
-          .select("line_id, contract_id, job, team, status, ton, acc, date_to, contracts(customer, type, contractdate)")
+          .select("line_id, contract_id, job, product, team, status, ton, acc, date_to, contracts(customer, type, contractdate)")
           .order("date_to", { ascending: false }),
         supabase.from("stock").select("stock_id, factory, qty, tag, type"),
         supabase
           .from("finance_invoices")
           .select("id, invoice_date, status_type, usd, total_invoice, tons, customer_name, fac")
           .order("invoice_date", { ascending: false }),
+        supabase
+          .from("deliveries")
+          .select("delivery_id, contract_id, job, delivery_date, quantity")
+          .order("delivery_date", { ascending: false }),
       ]);
 
       if (cancelled) return;
 
-      if (contractRes.error || stockRes.error || invoiceRes.error) {
-        setError(contractRes.error?.message ?? stockRes.error?.message ?? invoiceRes.error?.message ?? "Failed to load trade performance data.");
+      if (contractRes.error || stockRes.error || invoiceRes.error || deliveryRes.error) {
+        setError(
+          contractRes.error?.message ??
+            stockRes.error?.message ??
+            invoiceRes.error?.message ??
+            deliveryRes.error?.message ??
+            "Failed to load trade performance data.",
+        );
         setContractRows([]);
         setStockRows([]);
         setInvoiceRows([]);
+        setDeliveryRows([]);
         setLoading(false);
         return;
       }
@@ -199,6 +221,7 @@ export default function MyCompany() {
           status: row.status ?? "Unknown",
           ton,
           acc,
+          product: row.product ?? "-",
           job: row.job ?? "-",
           team: row.team ?? "-",
           contractType,
@@ -225,9 +248,18 @@ export default function MyCompany() {
         factory: normalizeFactory(row.fac),
       } satisfies DashboardInvoiceRow));
 
+      const mappedDeliveries = ((deliveryRes.data ?? []) as DeliveryDbRow[]).map((row, index) => ({
+        id: row.delivery_id ?? `delivery-${index}`,
+        deliveryDate: row.delivery_date ?? null,
+        quantity: toNumber(row.quantity),
+        contractId: row.contract_id,
+        job: row.job,
+      } satisfies DashboardDeliveryRow));
+
       setContractRows(mappedContracts);
       setStockRows(mappedStocks);
       setInvoiceRows(mappedInvoices);
+      setDeliveryRows(mappedDeliveries);
       setLoading(false);
     };
 
@@ -511,6 +543,7 @@ export default function MyCompany() {
           contractRows={contractRows}
           stockRows={stockRows}
           invoiceRows={invoiceRows}
+          deliveryRows={deliveryRows}
           loading={loading}
         />
 

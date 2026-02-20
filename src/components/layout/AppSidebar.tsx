@@ -13,12 +13,18 @@ import { useAuth } from "@/contexts/AuthContext";
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
-  const [expandedItems, setExpandedItems] = useState<string[]>(["THAI ROONG RUANG INDUSTRY CO., LTD.", "Back Office"]);
+  const [expandedItems, setExpandedItems] = useState<string[]>(["My Company", "Admin Control", "Back Office"]);
   const location = useLocation();
   const { accountType } = useAuth();
   const isBackOffice = accountType === "admin";
   const visibleMainNavItems = isBackOffice ? [] : mainNavItems;
   const visibleAdminNavItems = isBackOffice ? adminNavItems : [];
+  const customerPrimaryNavItems = visibleMainNavItems.filter(
+    (item) => item.title === "Market Intelligence" || item.title === "My Company",
+  );
+  const customerToolNavItems = visibleMainNavItems.filter(
+    (item) => item.title === "Admin Control" || item.title === "AI Agent",
+  );
 
   const toggleExpand = (title: string) => {
     setExpandedItems((prev) =>
@@ -55,7 +61,14 @@ export function AppSidebar() {
             </NavLink>
           </TooltipTrigger>
           <TooltipContent side="right" className="flex flex-col">
-            <span className="font-medium">{item.title}</span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">{item.title}</span>
+              {item.badge ? (
+                <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  {item.badge}
+                </span>
+              ) : null}
+            </div>
             <span className="text-xs text-muted-foreground">{item.description}</span>
           </TooltipContent>
         </Tooltip>
@@ -86,6 +99,11 @@ export function AppSidebar() {
             <span className="min-w-0 truncate text-sm font-medium" title={item.title}>
               {item.title}
             </span>
+            {item.badge ? (
+              <span className="ml-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                {item.badge}
+              </span>
+            ) : null}
           </NavLink>
           {hasChildren && (
             <button
@@ -115,7 +133,12 @@ export function AppSidebar() {
                 )}
               >
                 <child.icon className="h-4 w-4" />
-                {child.title}
+                <span className="truncate">{child.title}</span>
+                {child.badge ? (
+                  <span className="ml-auto rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700">
+                    {child.badge}
+                  </span>
+                ) : null}
               </NavLink>
             ))}
           </div>
@@ -152,10 +175,27 @@ export function AppSidebar() {
 
       {/* Main Navigation */}
       <nav className="flex-1 p-3 space-y-1.5">
-        {visibleMainNavItems.length > 0 && (
+        {visibleMainNavItems.length > 0 && !collapsed && (
+          <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/50">
+            Workspace
+          </p>
+        )}
+        {customerPrimaryNavItems.length > 0 && (
           <div className="space-y-1">
-            {visibleMainNavItems.map(renderNavItem)}
+            {customerPrimaryNavItems.map(renderNavItem)}
           </div>
+        )}
+        {customerToolNavItems.length > 0 && (
+          <>
+            {!collapsed && (
+              <p className="px-2 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/50">
+                Tools
+              </p>
+            )}
+            <div className="space-y-1">
+              {customerToolNavItems.map(renderNavItem)}
+            </div>
+          </>
         )}
 
         {visibleMainNavItems.length > 0 && visibleAdminNavItems.length > 0 && (

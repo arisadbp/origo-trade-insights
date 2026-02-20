@@ -15,12 +15,16 @@ import MarketIntelligenceCompanyProfile from "./pages/MarketIntelligenceCompanyP
 import MyCompany from "./pages/MyCompany";
 import NotFound from "./pages/NotFound";
 import OrdersShipments from "./pages/OrdersShipments";
+import AIAgent from "./pages/AIAgent";
 import UploadCenter from "./pages/UploadCenter";
+import AdminControlEditData from "./pages/AdminControlEditData";
+import YourProduct from "./pages/YourProduct";
 import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminDataManagement from "./pages/admin/AdminDataManagement";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminBackoffice from "./pages/admin/AdminBackoffice";
+import AdminProductSuggestion from "./pages/admin/AdminProductSuggestion";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 
@@ -109,12 +113,16 @@ const App = () => (
               <Route element={<ProtectedLayout allowedAccountType="customer" />}>
                 <Route path="/market-intelligence" element={<MarketIntelligence />} />
                 <Route path="/market-intelligence/company/:companyId" element={<MarketIntelligenceCompanyProfile />} />
+                <Route path="/ai-agent" element={<AIAgent />} />
                 <Route path="/my-company" element={<Navigate to="/my-company/performance" replace />} />
                 <Route path="/my-company/orders" element={<OrdersShipments />} />
                 <Route path="/my-company/invoices" element={<InvoicesPayments />} />
                 <Route path="/my-company/inventory" element={<Inventory />} />
+                <Route path="/my-company/ai-agent" element={<Navigate to="/ai-agent" replace />} />
                 <Route path="/my-company/performance" element={<MyCompany />} />
                 <Route path="/upload" element={<UploadCenter />} />
+                <Route path="/upload/edit-data" element={<AdminControlEditData />} />
+                <Route path="/upload/your-product" element={<YourProduct />} />
               </Route>
 
               <Route element={<ProtectedLayout allowedAccountType="admin" />}>
@@ -124,6 +132,7 @@ const App = () => (
                 <Route path="/admin/customers" element={<AdminCustomers />} />
                 <Route path="/admin/users" element={<AdminUsers />} />
                 <Route path="/admin/data" element={<AdminDataManagement />} />
+                <Route path="/admin/products" element={<AdminProductSuggestion />} />
               </Route>
 
               <Route path="*" element={<NotFound />} />
