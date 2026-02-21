@@ -1,0 +1,46 @@
+name: Hostinger Static Deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hostinger-static-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: build-and-publish-dist
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Add rewrite rules for SPA routing
+        run: cp public/.htaccess dist/.htaccess
+
+      - name: Publish dist to hostinger-deploy branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: hostinger-deploy
+          publish_dir: ./dist
+          force_orphan: true
+          commit_message: "deploy: ${{ github.sha }}"
