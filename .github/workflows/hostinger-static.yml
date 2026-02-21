@@ -46,5 +46,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: hostinger-deploy
           publish_dir: ./dist
-          force_orphan: true
           commit_message: "deploy: ${{ github.sha }}"
